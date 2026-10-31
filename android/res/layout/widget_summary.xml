@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Summary widget: date, four status tiles, next task. Mirrors the in-app preview. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg"
+    android:paddingLeft="14dp"
+    android:paddingTop="12dp"
+    android:paddingRight="12dp"
+    android:paddingBottom="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:textColor="@color/ink"
+                android:textSize="16sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:id="@+id/brand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:textColor="@color/accent"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/btn_refresh"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/btn_circle"
+            android:padding="7dp"
+            android:src="@drawable/ic_refresh"
+            android:tint="@color/ink2"
+            android:contentDescription="@string/cd_refresh" />
+
+        <ImageView
+            android:id="@+id/btn_add"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginLeft="6dp"
+            android:background="@drawable/btn_add"
+            android:padding="7dp"
+            android:src="@drawable/ic_add"
+            android:tint="@color/accent_ink"
+            android:contentDescription="@string/cd_add" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/tile_overdue"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/tile_overdue"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <TextView android:id="@+id/num_overdue" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/overdue" android:textSize="22sp" android:fontFamily="sans-serif-medium" android:text="0" />
+            <TextView android:id="@+id/label_overdue" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:singleLine="true" android:ellipsize="end" android:textColor="@color/ink2" android:textSize="10.5sp"
+                android:textStyle="bold" android:text="@string/tile_overdue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tile_today"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginLeft="6dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/tile_today"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <TextView android:id="@+id/num_today" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/accent" android:textSize="22sp" android:fontFamily="sans-serif-medium" android:text="0" />
+            <TextView android:id="@+id/label_today" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:singleLine="true" android:ellipsize="end" android:textColor="@color/ink2" android:textSize="10.5sp"
+                android:textStyle="bold" android:text="@string/tile_today" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tile_doing"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginLeft="6dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/tile_doing"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <TextView android:id="@+id/num_doing" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/doing" android:textSize="22sp" android:fontFamily="sans-serif-medium" android:text="0" />
+            <TextView android:id="@+id/label_doing" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:singleLine="true" android:ellipsize="end" android:textColor="@color/ink2" android:textSize="10.5sp"
+                android:textStyle="bold" android:text="@string/tile_doing" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tile_done"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginLeft="6dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/tile_done"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+            <TextView android:id="@+id/num_done" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/done" android:textSize="22sp" android:fontFamily="sans-serif-medium" android:text="0" />
+            <TextView android:id="@+id/label_done" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:singleLine="true" android:ellipsize="end" android:textColor="@color/ink2" android:textSize="10.5sp"
+                android:textStyle="bold" android:text="@string/tile_done" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/next_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/next_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:textColor="@color/accent"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/next_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginLeft="8dp"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textColor="@color/ink"
+            android:textSize="12.5sp" />
+    </LinearLayout>
+</LinearLayout>

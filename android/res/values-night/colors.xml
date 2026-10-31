@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#FF0B1110</color>
+    <color name="widget_bg">#FF151D1B</color>
+    <color name="surface2">#FF1D2725</color>
+    <color name="ink">#FFE4ECE9</color>
+    <color name="ink2">#FF9CABA5</color>
+    <color name="ink3">#FF6B7B75</color>
+    <color name="line">#FF24302D</color>
+    <color name="accent">#FF3CC2B4</color>
+    <color name="accent_ink">#FF03201C</color>
+    <color name="accent_soft">#FF113430</color>
+    <color name="overdue">#FFF27C68</color>
+    <color name="overdue_soft">#FF3B1D18</color>
+    <color name="doing">#FFF0B345</color>
+    <color name="doing_soft">#FF3A2C12</color>
+    <color name="done">#FF5CC98B</color>
+    <color name="done_soft">#FF15301F</color>
+    <color name="warn">#FFE8A83A</color>
+</resources>

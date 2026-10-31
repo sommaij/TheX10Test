@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- List widget: header with counts, then the most urgent tasks with a tick button each. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg"
+    android:paddingLeft="14dp"
+    android:paddingTop="12dp"
+    android:paddingRight="12dp"
+    android:paddingBottom="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:text="@string/list_title"
+                android:textColor="@color/ink"
+                android:textSize="16sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:orientation="horizontal">
+                <TextView android:id="@+id/count_overdue" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:background="@drawable/pill_overdue" android:paddingLeft="6dp" android:paddingRight="6dp"
+                    android:singleLine="true" android:textColor="@color/overdue" android:textSize="10.5sp" android:textStyle="bold" />
+                <TextView android:id="@+id/count_today" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginLeft="4dp" android:background="@drawable/pill_today" android:paddingLeft="6dp" android:paddingRight="6dp"
+                    android:singleLine="true" android:textColor="@color/accent" android:textSize="10.5sp" android:textStyle="bold" />
+                <TextView android:id="@+id/count_doing" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginLeft="4dp" android:background="@drawable/pill_doing" android:paddingLeft="6dp" android:paddingRight="6dp"
+                    android:singleLine="true" android:textColor="@color/doing" android:textSize="10.5sp" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/btn_refresh"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/btn_circle"
+            android:padding="7dp"
+            android:src="@drawable/ic_refresh"
+            android:tint="@color/ink2"
+            android:contentDescription="@string/cd_refresh" />
+
+        <ImageView
+            android:id="@+id/btn_add"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginLeft="6dp"
+            android:background="@drawable/btn_add"
+            android:padding="7dp"
+            android:src="@drawable/ic_add"
+            android:tint="@color/accent_ink"
+            android:contentDescription="@string/cd_add" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/rows"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:orientation="vertical" />
+
+    <TextView
+        android:id="@+id/empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingBottom="16dp"
+        android:text="@string/empty"
+        android:textColor="@color/ink2"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/more"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:singleLine="true"
+        android:textColor="@color/ink3"
+        android:textSize="11sp"
+        android:visibility="gone" />
+</LinearLayout>

@@ -64,6 +64,7 @@ class Store extends EventEmitter {
     let list = this.db.tasks;
     if (filter.status === 'open') list = list.filter((t) => !t.done);
     if (filter.status === 'done') list = list.filter((t) => t.done);
+    if (filter.status === 'doing') list = list.filter((t) => S.statusOf(t) === 'doing');
     if (filter.category) list = list.filter((t) => t.category === filter.category);
     if (filter.source) list = list.filter((t) => t.source === filter.source);
     if (filter.from) list = list.filter((t) => t.due && t.due >= filter.from);
@@ -297,7 +298,7 @@ class Store extends EventEmitter {
   }
 }
 
-const COMPARED = ['title', 'notes', 'category', 'due', 'time', 'reminder', 'repeat', 'priority', 'externalId', 'sourceName'];
+const COMPARED = ['title', 'notes', 'category', 'due', 'time', 'reminder', 'repeat', 'priority', 'status', 'externalId', 'sourceName'];
 function sameTask(a, b) {
   if (COMPARED.some((k) => (a[k] ?? null) !== (b[k] ?? null))) return false;
   const subs = (t) => JSON.stringify((t.subtasks || []).map((s) => [s.title, s.done]));

@@ -96,3 +96,60 @@ test('auto-detects common list wrappers and ids', () => {
   assert.equal(r.items[0].done, true);
   assert.equal(r.errors.length, 1);
 });
+
+test('status: in progress, done and words from other apps', () => {
+  assert.equal(S.parseStatus('in_progress'), 'doing');
+  assert.equal(S.parseStatus('In Progress'), 'doing');
+  assert.equal(S.parseStatus('กำลังทำ'), 'doing');
+  assert.equal(S.parseStatus('completed'), 'done');
+  assert.equal(S.parseStatus('open'), 'todo');
+  const f = S.normalizeFields({ title: 'x', status: 'doing' }, ctx);
+  assert.deepEqual([f.status, f.done], ['doing', false]);
+  const d = S.normalizeFields({ title: 'x', status: 'done' }, ctx);
+  assert.deepEqual([d.status, d.done], ['done', true]);
+  // done=true wins over a contradictory status
+  const c = S.normalizeFields({ title: 'x', done: true, status: 'doing' }, ctx);
+  assert.deepEqual([c.status, c.done], ['done', true]);
+});
+
+test('status stays in step with done through edits and completion', () => {
+  const t = S.createTask({ title: 'ซ่อมแอร์', status: 'doing' }, ctx);
+  assert.equal(t.status, 'doing');
+  const c = Object.assign({}, ctx, { find: () => null });
+  const done = S.setDone(t, true, c).task;
+  assert.equal(done.status, 'done');
+  // reopening an in-progress task keeps it in progress
+  assert.equal(S.setDone(Object.assign({}, done, { status: 'doing' }), false, c).task.status, 'doing');
+  assert.equal(S.setDone(done, false, c).task.status, 'todo');
+  // an edit cannot leave a finished task "in progress"
+  assert.equal(S.patchTask(done, { status: 'doing' }, ctx).status, 'done');
+});
+
+test('buckets and widget payload summarise the day', () => {
+  const mk = (f) => S.createTask(Object.assign({ title: 't' }, f), ctx);
+  const tasks = [
+    mk({ title: 'late', due: '2026-10-30' }),
+    mk({ title: 'today 9', due: '2026-10-31', time: '09:00' }),
+    mk({ title: 'today 8', due: '2026-10-31', time: '08:00', category: 'work' }),
+    mk({ title: 'doing', due: '2026-10-29', status: 'doing' }),
+    mk({ title: 'later', due: '2026-11-03' }),
+    mk({ title: 'far', due: '2027-01-01' }),
+    mk({ title: 'someday' }),
+    Object.assign(mk({ title: 'finished', due: '2026-10-31' }), { done: true, status: 'done', doneAt: '2026-10-31T03:00:00.000Z' }),
+  ];
+  const b = S.buckets(tasks, '2026-10-31', 'Asia/Bangkok');
+  assert.deepEqual(b.doing.map((t) => t.title), ['doing']);
+  assert.deepEqual(b.overdue.map((t) => t.title), ['late']);
+  assert.deepEqual(b.today.map((t) => t.title), ['today 8', 'today 9']);
+  assert.equal(b.doneToday.length, 1);
+  assert.equal(S.nextUp(b).title, 'doing');
+
+  const w = S.widgetPayload(tasks, S.DEFAULT_CATEGORIES, ctx);
+  assert.equal(w.today, '2026-10-31');
+  assert.equal(w.openCount, 7);
+  assert.deepEqual(w.doneDays, { '2026-10-31': 1 });
+  assert.ok(!w.tasks.some((t) => t.title === 'far'), 'only the next two weeks');
+  const t8 = w.tasks.find((t) => t.title === 'today 8');
+  assert.equal(t8.color, S.COLOR_HEX.blue);
+  assert.equal(t8.category, 'งาน');
+});

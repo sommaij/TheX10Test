@@ -164,6 +164,9 @@ function createApp(options = {}) {
     return { deleted: task.id };
   });
 
+  // Compact summary for home-screen widgets (Android app refreshes from here when it is closed).
+  route('GET', '/api/v1/widget', 'app', () => S.widgetPayload(store.db.tasks, store.db.categories, store.ctx()));
+
   // ---------- categories ----------
   route('GET', '/api/v1/categories', 'app', () => ({ categories: store.db.categories }));
   route('POST', '/api/v1/categories', 'admin', ({ body, res }) => {

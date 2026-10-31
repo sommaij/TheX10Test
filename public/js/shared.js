@@ -9,10 +9,13 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
+  const STATUSES = ['todo', 'doing', 'done'];
   const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
   const COLORS = ['blue', 'green', 'amber', 'rose', 'violet', 'slate'];
   const EVENTS = ['task.created', 'task.updated', 'task.completed', 'task.deleted'];
+  // Category colours as hex for places that cannot use CSS variables (Android widgets).
+  const COLOR_HEX = { blue: '#4a7be0', green: '#34a06b', amber: '#d99a26', rose: '#d65a86', violet: '#8565d4', slate: '#6f8592' };
   const DEFAULT_CATEGORIES = [
     { id: 'work', name: 'งาน', color: 'blue' },
     { id: 'personal', name: 'ส่วนตัว', color: 'green' },
@@ -31,7 +34,8 @@
     repeat: ['repeat', 'recurrence', 'recurring'],
     priority: ['priority', 'importance', 'flag'],
     subtasks: ['subtasks', 'checklist', 'steps'],
-    done: ['done', 'completed', 'complete', 'isDone', 'is_done', 'status'],
+    done: ['done', 'completed', 'complete', 'isDone', 'is_done'],
+    status: ['status', 'state'],
     externalId: ['externalId', 'external_id', 'ref', 'reference'],
     sourceName: ['sourceName', 'source_name', 'app', 'from'],
   };
@@ -186,6 +190,19 @@
     return ['true', 'yes', '1', 'done', 'completed', 'complete', 'closed', 'resolved', 'finished', 'เสร็จ', 'เสร็จแล้ว'].includes(s);
   }
 
+  // todo = waiting, doing = in progress, done = finished. Other apps' words are mapped onto these.
+  function parseStatus(value) {
+    if (value === true) return 'done';
+    if (value === null || value === undefined || value === false || value === '') return 'todo';
+    const s = String(value).trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (['doing', 'in_progress', 'inprogress', 'progress', 'started', 'working', 'active', 'ongoing', 'wip', 'กำลังทำ', 'ดำเนินการ', 'กำลังดำเนินการ'].includes(s)) return 'doing';
+    if (parseDone(s.replace(/_/g, ' '))) return 'done';
+    return 'todo';
+  }
+  function statusOf(t) {
+    return t.done ? 'done' : t.status === 'doing' ? 'doing' : 'todo';
+  }
+
   function parseSubtasks(value) {
     if (value === null || value === undefined) return [];
     if (!Array.isArray(value)) throw new ValidationError('subtasks must be an array', 'subtasks');
@@ -263,6 +280,13 @@
     if (p.found) out.subtasks = parseSubtasks(p.value);
     p = pick(input, ALIASES.done);
     if (p.found) out.done = parseDone(p.value);
+    p = pick(input, ALIASES.status);
+    if (p.found) {
+      out.status = parseStatus(p.value);
+      if (out.status === 'done') out.done = true;
+      else if (out.done === true) out.status = 'done';
+      else out.done = false;
+    }
     p = pick(input, ALIASES.externalId);
     if (p.found && p.value != null && p.value !== '') out.externalId = String(p.value).slice(0, 200);
     p = pick(input, ALIASES.sourceName);
@@ -285,6 +309,7 @@
       priority: 0,
       subtasks: [],
       done: false,
+      status: 'todo',
       doneAt: null,
       source: 'app',
       sourceName: null,
@@ -297,6 +322,7 @@
     for (const k of Object.keys(fields)) if (k[0] !== '_') task[k] = fields[k];
     Object.assign(task, extra || {});
     if (task.done && !task.doneAt) task.doneAt = now;
+    task.status = task.done ? 'done' : task.status === 'doing' ? 'doing' : 'todo';
     if (!task.due) task.time = null;
     return task;
   }
@@ -310,6 +336,9 @@
       next[k] = fields[k];
     }
     if (!next.due) next.time = null;
+    // keep status and done in step; completion itself goes through setDone()
+    if (next.done) next.status = 'done';
+    else if (next.status !== 'doing') next.status = 'todo';
     next.updatedAt = now;
     return next;
   }
@@ -341,7 +370,7 @@
     let removeId = null;
     let updated = task;
     if (done && !task.done) {
-      updated = Object.assign({}, task, { done: true, doneAt: now, updatedAt: now });
+      updated = Object.assign({}, task, { done: true, status: 'done', doneAt: now, updatedAt: now });
       if (task.repeat) {
         const today = ctx.today;
         let next = nextDue(task.due || today, task.repeat);
@@ -352,14 +381,14 @@
         updated.spawnedId = id;
         if (!ctx.find(id)) {
           spawn = Object.assign({}, task, {
-            id, seriesId, due: next, done: false, doneAt: null, spawnedId: null,
+            id, seriesId, due: next, done: false, status: 'todo', doneAt: null, spawnedId: null,
             subtasks: (task.subtasks || []).map((s) => Object.assign({}, s, { done: false })),
             createdAt: now, updatedAt: now,
           });
         }
       }
     } else if (!done && task.done) {
-      updated = Object.assign({}, task, { done: false, doneAt: null, spawnedId: null, updatedAt: now });
+      updated = Object.assign({}, task, { done: false, status: task.status === 'doing' ? 'doing' : 'todo', doneAt: null, spawnedId: null, updatedAt: now });
       if (task.spawnedId) {
         const s = ctx.find(task.spawnedId);
         if (s && !s.done && s.createdAt === s.updatedAt) removeId = s.id;
@@ -427,6 +456,70 @@
     return { items: ok, errors, total: items.length };
   }
 
+  // ---------- at-a-glance status (app board, Android widgets, /api/v1/widget) ----------
+  function compareTasks(a, b) {
+    return (a.due || '9999').localeCompare(b.due || '9999') ||
+      (a.time || '99:99').localeCompare(b.time || '99:99') ||
+      (b.priority || 0) - (a.priority || 0) ||
+      String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+  }
+  /** Splits tasks into what needs attention. A task that is in progress is listed under `doing` only. */
+  function buckets(tasks, today, timeZone) {
+    const b = { doing: [], overdue: [], today: [], upcoming: [], nodate: [], doneToday: [] };
+    for (const t of tasks) {
+      if (t.done) {
+        if (t.doneAt && todayIn(timeZone, new Date(t.doneAt)) === today) b.doneToday.push(t);
+        continue;
+      }
+      if (statusOf(t) === 'doing') b.doing.push(t);
+      else if (!t.due) b.nodate.push(t);
+      else if (t.due < today) b.overdue.push(t);
+      else if (t.due === today) b.today.push(t);
+      else b.upcoming.push(t);
+    }
+    for (const k of Object.keys(b)) if (k !== 'doneToday') b[k].sort(compareTasks);
+    return b;
+  }
+  /** The next thing to do: in-progress first, then overdue, then today's earliest. */
+  function nextUp(b) {
+    return b.doing[0] || b.overdue[0] || b.today.find((t) => t.time) || b.today[0] || null;
+  }
+  /** Compact data for home-screen widgets. Dates are recomputed on the phone, so it stays right after midnight. */
+  function widgetPayload(tasks, categories, ctx) {
+    const cats = new Map((categories || []).map((c) => [c.id, c]));
+    const horizon = addDays(ctx.today, 14);
+    const yesterday = addDays(ctx.today, -1);
+    const open = tasks.filter((t) => !t.done && (statusOf(t) === 'doing' || !t.due || t.due <= horizon)).sort(compareTasks);
+    const doneDays = {};
+    for (const t of tasks) {
+      if (!t.done || !t.doneAt) continue;
+      const day = todayIn(ctx.timeZone, new Date(t.doneAt));
+      if (day >= yesterday) doneDays[day] = (doneDays[day] || 0) + 1;
+    }
+    return {
+      v: 1,
+      generatedAt: ctx.now || new Date().toISOString(),
+      today: ctx.today,
+      openCount: tasks.filter((t) => !t.done).length,
+      doneDays,
+      tasks: open.slice(0, 60).map((t) => {
+        const c = cats.get(t.category);
+        const subs = t.subtasks || [];
+        return {
+          id: t.id,
+          title: t.title,
+          due: t.due || null,
+          time: t.time || null,
+          status: statusOf(t),
+          priority: t.priority || 0,
+          category: c ? c.name : '',
+          color: COLOR_HEX[c ? c.color : 'slate'] || COLOR_HEX.slate,
+          subtasks: subs.length ? `${subs.filter((x) => x.done).length}/${subs.length}` : '',
+        };
+      }),
+    };
+  }
+
   // Built-in sample feed so the import screen can be tried without another system.
   function demoFeed(name, today) {
     if (name !== 'hotel-pms') return null;
@@ -437,7 +530,7 @@
       data: {
         tasks: [
           { ref: 'HK-1203', type: 'ทำความสะอาด', room: '1203', due: `${today}T11:00`, note: 'แขกเช็กเอาต์ 10:30 มีแขกใหม่เข้าพัก 14:00', priority: 'high' },
-          { ref: 'MT-0418', type: 'ซ่อมแอร์', room: '418', due: `${today}T14:30`, note: 'แอร์มีน้ำหยด แจ้งโดยแผนกต้อนรับ', priority: 'urgent' },
+          { ref: 'MT-0418', type: 'ซ่อมแอร์', room: '418', due: `${today}T14:30`, note: 'แอร์มีน้ำหยด แจ้งโดยแผนกต้อนรับ', priority: 'urgent', status: 'in_progress' },
           { ref: 'FD-0077', type: 'เตรียมของต้อนรับ VIP', room: 'V02', due: `${tmr}T15:00`, note: 'ผลไม้ + การ์ดฉลองครบรอบแต่งงาน' },
           { ref: 'HK-0907', type: 'เปลี่ยนผ้าปูที่นอน', room: '907', due: `${tmr}T10:00`, note: '' },
         ],
@@ -466,8 +559,8 @@
   ];
 
   return {
-    VERSION, REPEATS, COLORS, EVENTS, DEFAULT_CATEGORIES, ALIASES, PRESETS,
-    ValidationError, uid, randomHex, pad,
+    VERSION, REPEATS, COLORS, COLOR_HEX, STATUSES, EVENTS, DEFAULT_CATEGORIES, ALIASES, PRESETS,
+    ValidationError, uid, randomHex, pad, parseStatus, statusOf, compareTasks, buckets, nextUp, widgetPayload,
     partsInZone, todayIn, addDays, addMonths, weekday, isValidDate,
     parseWhen, parseTime, parseReminder, parseRepeat, parsePriority, parseDone, parseSubtasks,
     resolveCategory, normalizeFields, createTask, patchTask, nextDue, setDone,

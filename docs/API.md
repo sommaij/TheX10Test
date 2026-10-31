@@ -45,6 +45,7 @@ X-API-Key: x10_xxxxxxxx
   "repeat": null,
   "priority": 2,
   "subtasks": [{ "id": "s_…", "title": "มินิบาร์ครบ", "done": false }],
+  "status": "doing",
   "done": false,
   "doneAt": null,
   "source": "key:k_…",
@@ -66,13 +67,14 @@ X-API-Key: x10_xxxxxxxx
 | `repeat` | `recurrence` `recurring` | `daily` `weekdays` `weekly` `monthly` `yearly` หรือ `ทุกวัน` `ทุกสัปดาห์` … |
 | `priority` | `importance` `flag` | `0`–`2` หรือ `normal` `high`/`สำคัญ` `urgent`/`ด่วน` |
 | `subtasks` | `checklist` `steps` | `["ข้อ 1", {"title":"ข้อ 2","done":true}]` |
-| `done` | `completed` `status` | `true` / `"done"` / `"completed"` / `"เสร็จ"` |
+| `status` | `state` | `todo` (รอทำ), `doing` (กำลังทำ), `done` (เสร็จ) รับคำอื่นได้ เช่น `open`, `in_progress`, `started`, `completed`, `กำลังทำ` |
+| `done` | `completed` `complete` `isDone` | `true` / `"done"` / `"completed"` / `"เสร็จ"` (`done` กับ `status` สอดคล้องกันเสมอ: `done: true` ⇔ `status: "done"`) |
 | `externalId` | `external_id` `ref` `reference` | รหัสในระบบต้นทาง ใช้กันงานซ้ำ |
 | `sourceName` | `app` `from` | ชื่อที่แสดงว่า “มาจาก …” |
 
 ### `GET /tasks`
 
-ตัวกรอง: `status=open|done`, `category`, `source`, `from=YYYY-MM-DD`, `to=YYYY-MM-DD`, `q` (ค้นข้อความ), `updatedSince` (ISO)
+ตัวกรอง: `status=open|doing|done`, `category`, `source`, `from=YYYY-MM-DD`, `to=YYYY-MM-DD`, `q` (ค้นข้อความ), `updatedSince` (ISO)
 
 ```bash
 curl -H "Authorization: Bearer $KEY" "https://your-server/api/v1/tasks?status=open&from=2026-11-01&to=2026-11-07"
@@ -107,9 +109,35 @@ curl -X PATCH https://your-server/api/v1/tasks/t_3f9a1c0b2d4e5f60 \
 ```
 → `{ "task": {...}, "spawned": null }`
 
+เปลี่ยนสถานะเป็นกำลังทำ:
+
+```bash
+curl -X PATCH https://your-server/api/v1/tasks/t_3f9a1c0b2d4e5f60 \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"status":"in_progress"}'
+```
+
 ### `POST /tasks/:id/complete`
 
 ทางลัดของ `PATCH {"done": true}`
+
+### `GET /widget`
+
+ข้อมูลย่อสำหรับวิดเจ็ตหน้าจอโฮม (แอป Android ใช้ดึงงานใหม่ตอนปิดแอปอยู่) ใช้คีย์แอปได้
+
+```json
+{
+  "v": 1,
+  "today": "2026-10-31",
+  "openCount": 7,
+  "doneDays": { "2026-10-31": 1 },
+  "tasks": [
+    { "id": "t_…", "title": "ซ่อมแอร์ ห้อง 418", "due": "2026-10-31", "time": "14:30", "status": "doing",
+      "priority": 2, "category": "งาน", "color": "#4a7be0", "subtasks": "1/3" }
+  ]
+}
+```
+
+`tasks` คืองานที่ยังไม่เสร็จภายใน 14 วันข้างหน้า งานที่กำลังทำ และงานที่ไม่มีกำหนด (สูงสุด 60 งาน) ส่วน `doneDays` คือจำนวนงานที่เสร็จของเมื่อวานและวันนี้
 
 ## หมวดหมู่
 

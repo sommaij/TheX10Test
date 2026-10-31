@@ -69,11 +69,14 @@ class ConnectorRunner {
       for (const fields of mapped.items) {
         const input = Object.assign({}, fields);
         delete input._newCategory;
-        // The other system may mark work done, but never un-ticks what was finished in X10.
-        if (input.done === false) delete input.done;
         if (input.category === undefined && connector.category) input.category = connector.category;
         if (fields._newCategory) input.category = fields._newCategory.name;
         const before = this.store.db.tasks.find((t) => t.externalId === fields.externalId && t.source === source.source);
+        // The other system may mark work done, but never un-ticks what was finished in X10.
+        if (input.done === false) {
+          delete input.done;
+          if (before && before.done) delete input.status;
+        }
         const r = this.store.upsertTask(input, source);
         if (r.created) created++;
         else if (before && r.task !== before) updated++;

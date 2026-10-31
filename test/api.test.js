@@ -81,6 +81,14 @@ test('API: auth, create, list, update, complete, delete', async (t) => {
   assert.equal(done.body.task.done, true);
   assert.ok(done.body.task.doneAt);
 
+  const doing = await call('PATCH', `/api/v1/tasks/${a.body.task.id}`, { status: 'in progress' }, appKey);
+  assert.deepEqual([doing.body.task.status, doing.body.task.done], ['doing', false]);
+  assert.deepEqual((await call('GET', '/api/v1/tasks?status=doing', undefined, appKey)).body.tasks.map((x) => x.id), [a.body.task.id]);
+  const widget = await call('GET', '/api/v1/widget', undefined, appKey);
+  assert.equal(widget.status, 200);
+  assert.equal(widget.body.tasks.find((x) => x.id === a.body.task.id).status, 'doing');
+  assert.equal(widget.body.doneDays[widget.body.today], 1);
+
   const del = await call('DELETE', `/api/v1/tasks/${task.id}`, undefined, appKey);
   assert.equal(del.status, 200);
   assert.equal((await call('GET', `/api/v1/tasks/${task.id}`, undefined, appKey)).status, 404);

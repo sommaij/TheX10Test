@@ -3,7 +3,11 @@
   'use strict';
   const S = window.X10Shared;
   const DEMO = !!window.X10_DEMO;
+  // Present when running inside the X10 Tasks Android app (home-screen widgets, native reminders).
+  const NATIVE = window.X10Native || null;
   const STORAGE_KEY = 'x10tasks.v1';
+  // The page's own web address, when it is served from a web server (not the Android app or the demo).
+  const WEB_ORIGIN = !DEMO && /^https?:$/.test(location.protocol) ? location.origin : '';
 
   // ---------- helpers ----------
   const $ = (sel, el = document) => el.querySelector(sel);
@@ -78,6 +82,9 @@
     upload: '<path d="M12 16V5M7 9.5l5-5 5 5M5 20h14"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.5 12h-2M21.5 12h-2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+    alert: '<path d="M12 4.5l9 15.5H3z"/><path d="M12 10v4.5M12 17.4v.1"/>',
+    play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+    widget: '<rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="3.5" y="13" width="17" height="7.5" rx="2"/>',
   };
   const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -94,7 +101,13 @@
   }
   function load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      let raw = null;
+      try {
+        raw = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        /* storage blocked */
+      }
+      if (!raw && NATIVE) raw = NATIVE.loadState() || null;
       if (raw) {
         const saved = JSON.parse(raw);
         const s = Object.assign(defaultState(), saved);
@@ -111,11 +124,13 @@
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
+      const json = JSON.stringify(state);
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(STORAGE_KEY, json);
       } catch (e) {
         /* storage full or blocked */
       }
+      if (NATIVE) NATIVE.saveState(json);
     }, 80);
   }
 
@@ -124,6 +139,7 @@
     category: 'all',
     search: '',
     searchOpen: false,
+    filter: '',
     calMonth: today().slice(0, 7),
     calDay: today(),
     serverHint: false,
@@ -147,7 +163,7 @@
     state.tasks = [
       ex({ title: 'ส่งสรุปยอดจองประจำสัปดาห์', due: S.addDays(td, -1), time: '17:00', category: 'work', priority: 1 }),
       ex({ title: 'ประชุมทีมฝ่ายต้อนรับ', due: td, time: '09:30', category: 'work', repeat: 'weekdays', reminder: 15 }),
-      ex({ title: 'ตรวจความเรียบร้อยวิลล่าก่อนแขก VIP เข้าพัก', due: td, time: '13:30', category: 'work', priority: 2, reminder: 30,
+      ex({ title: 'ตรวจความเรียบร้อยวิลล่าก่อนแขก VIP เข้าพัก', due: td, time: '13:30', category: 'work', priority: 2, reminder: 30, status: 'doing',
         subtasks: [{ title: 'ดอกไม้และการ์ดต้อนรับ', done: true }, { title: 'เช็กเครื่องปรับอากาศ', done: false }, { title: 'มินิบาร์ครบ', done: false }] }),
       ex({ title: 'ออกกำลังกาย 30 นาที', due: td, time: '18:00', category: 'personal', repeat: 'daily' }),
       ex({ title: 'ตอบอีเมลลูกค้ากลุ่มสัมมนา', due: td, time: '08:30', category: 'work', done: true }),
@@ -250,7 +266,55 @@
     save();
     if (rerender) render();
     Reminders.check();
+    Native.push();
   }
+
+  // Sets waiting / in progress / done in one step.
+  function setTaskStatus(id, status) {
+    const t = findTask(id);
+    if (!t) return;
+    if (status === 'done') return setTaskDone(id, true);
+    if (t.done) setTaskDone(id, false);
+    if (S.statusOf(findTask(id)) !== status) updateTask(id, { status });
+  }
+
+  // ---------- Android app: home-screen widgets, reminders, widget taps ----------
+  const Native = {
+    timer: null,
+    push() {
+      if (!NATIVE) return;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => {
+        try {
+          NATIVE.updateWidgets(JSON.stringify(S.widgetPayload(state.tasks, state.categories, ctx())));
+          NATIVE.scheduleReminders(JSON.stringify(Reminders.upcoming()));
+        } catch (e) {
+          /* bridge unavailable */
+        }
+      }, 300);
+    },
+    server() {
+      if (!NATIVE) return;
+      const srv = state.settings.server;
+      NATIVE.setServer(srv ? srv.url || WEB_ORIGIN : '', srv ? srv.key : '');
+    },
+    // Ticks made on the home-screen widget while the app was closed.
+    applyWidgetActions() {
+      if (!NATIVE) return;
+      let actions = [];
+      try {
+        actions = JSON.parse(NATIVE.takeWidgetActions() || '[]');
+      } catch (e) {
+        return;
+      }
+      for (const a of actions) {
+        const t = findTask(a.id);
+        if (!t) continue;
+        if (a.type === 'done' && !t.done) setTaskDone(a.id, true);
+        if (a.type === 'doing' && !t.done) setTaskStatus(a.id, 'doing');
+      }
+    },
+  };
 
   // ---------- sync with the X10 server ----------
   const Sync = {
@@ -432,10 +496,20 @@
       for (const k of Object.keys(state.notified)) if (now - state.notified[k] > 3 * 86400 * 1000) delete state.notified[k];
       if (fired) save();
     },
+    // Reminders for the next 7 days, handed to the Android app so they ring even when it is closed.
+    upcoming() {
+      const now = Date.now();
+      return state.tasks
+        .map((t) => ({ t, at: this.fireTime(t) }))
+        .filter((x) => x.at !== null && x.at > now && x.at - now < 7 * 86400 * 1000)
+        .sort((a, b) => a.at - b.at)
+        .slice(0, 60)
+        .map(({ t, at }) => ({ id: t.id, at, title: t.title, body: t.time ? `${dueLabel(t.due)} ${t.time}` : dueLabel(t.due) }));
+    },
     notify(t) {
       const when = t.time ? `${dueLabel(t.due)} ${t.time}` : dueLabel(t.due);
       toast(`${icon('bell')} ถึงเวลา: ${esc(t.title)}`, { html: true, action: 'ดูงาน', onAction: () => openEditor(t.id) });
-      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      if (NATIVE || !('Notification' in window) || Notification.permission !== 'granted') return;
       const opts = { body: when, tag: t.id, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { id: t.id } };
       try {
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -613,13 +687,13 @@
   }
 
   // ---------- task list ----------
-  function sortTasks(list) {
-    return list.sort((a, b) =>
-      (a.due || '9999') .localeCompare(b.due || '9999') ||
-      (a.time || '99:99').localeCompare(b.time || '99:99') ||
-      (b.priority || 0) - (a.priority || 0) ||
-      a.createdAt.localeCompare(b.createdAt));
-  }
+  const sortTasks = (list) => list.sort(S.compareTasks);
+  const STATUS_META = {
+    overdue: { label: 'เลยกำหนด', icon: 'alert', cls: 'st-overdue' },
+    today: { label: 'วันนี้', icon: 'sun', cls: 'st-today' },
+    doing: { label: 'กำลังทำ', icon: 'play', cls: 'st-doing' },
+    done: { label: 'เสร็จวันนี้', icon: 'check', cls: 'st-done' },
+  };
   function visibleTasks() {
     let list = state.tasks;
     if (ui.category !== 'all') list = list.filter((t) => t.category === ui.category);
@@ -630,10 +704,36 @@
     return list;
   }
 
+  function untilLabel(t) {
+    const td = today();
+    if (!t.due) return '';
+    if (t.due < td) {
+      const days = Math.round((toDate(td) - toDate(t.due)) / 86400000);
+      return days === 1 ? 'เลยกำหนดเมื่อวาน' : `เลยกำหนด ${days} วัน`;
+    }
+    if (t.due > td) return dueLabel(t.due) + (t.time ? ` ${t.time}` : '');
+    if (!t.time) return 'ภายในวันนี้';
+    const [h, m] = t.time.split(':').map(Number);
+    const now = new Date();
+    const diff = h * 60 + m - (now.getHours() * 60 + now.getMinutes());
+    if (diff < 0) return `เลยเวลา ${fmtMinutes(-diff)}`;
+    if (diff === 0) return 'ถึงเวลาแล้ว';
+    return `อีก ${fmtMinutes(diff)}`;
+  }
+  function fmtMinutes(n) {
+    if (n < 60) return `${n} นาที`;
+    const h = Math.floor(n / 60);
+    const m = n % 60;
+    return m ? `${h} ชม. ${m} นาที` : `${h} ชม.`;
+  }
+
   function taskRow(t, { showDate = false } = {}) {
+    const st = S.statusOf(t);
+    const td = today();
     const meta = [];
-    if (showDate && t.due) meta.push(`<span class="meta-date${!t.done && t.due < today() ? ' late' : ''}">${esc(dueLabel(t.due))}</span>`);
-    if (t.time) meta.push(`<span class="meta-time">${icon('clock')}${esc(t.time)}</span>`);
+    if (st === 'doing') meta.push('<span class="pill-st doing">กำลังทำ</span>');
+    if (showDate && t.due) meta.push(`<span class="meta-date${!t.done && t.due < td ? ' late' : ''}">${esc(dueLabel(t.due))}</span>`);
+    if (t.time) meta.push(`<span class="meta-time${!t.done && t.due === td && untilLabel(t).startsWith('เลย') ? ' late' : ''}">${icon('clock')}${esc(t.time)}</span>`);
     if (t.reminder !== null && t.reminder !== undefined) meta.push(`<span title="มีแจ้งเตือน">${icon('bell')}</span>`);
     if (t.repeat) meta.push(`<span title="ทำซ้ำ">${icon('repeat')}</span>`);
     if (t.subtasks && t.subtasks.length) meta.push(`<span>${icon('checklist')}${t.subtasks.filter((s) => s.done).length}/${t.subtasks.length}</span>`);
@@ -641,11 +741,11 @@
     if (t.sourceName) meta.push(`<span class="src">${icon('inbox')}${esc(t.sourceName)}</span>`);
     if (t.sample) meta.push('<span class="src sample">ตัวอย่าง</span>');
     const cat = catOf(t.category);
-    return `<li class="task${t.done ? ' done' : ''}${t.priority ? ' p' + t.priority : ''}" data-id="${esc(t.id)}" style="--cat:${catColor(t.category)}">
+    return `<li class="task st-${st}${t.priority ? ' p' + t.priority : ''}" data-id="${esc(t.id)}" style="--cat:${catColor(t.category)}">
       <button type="button" class="check" data-action="toggle" data-id="${esc(t.id)}" role="checkbox" aria-checked="${t.done}" aria-label="${t.done ? 'ยกเลิกเสร็จ' : 'ทำเสร็จ'}: ${esc(t.title)}">${icon('check')}</button>
       <button type="button" class="task-body" data-action="open" data-id="${esc(t.id)}">
         <span class="task-title">${esc(t.title)}</span>
-        ${meta.length || cat ? `<span class="task-meta">${cat && ui.category === 'all' ? `<span class="cat-tag">${esc(cat.name)}</span>` : ''}${meta.join('')}</span>` : ''}
+        ${meta.length || cat ? `<span class="task-meta">${cat && ui.category === 'all' ? `<span class="cat-tag"><i></i>${esc(cat.name)}</span>` : ''}${meta.join('')}</span>` : ''}
       </button>
       ${t.priority ? `<span class="prio" title="${t.priority === 2 ? 'ด่วน' : 'สำคัญ'}">${icon('flag')}</span>` : ''}
     </li>`;
@@ -653,8 +753,11 @@
 
   function group(title, list, opts = {}) {
     if (!list.length) return '';
+    const head = opts.toggle
+      ? `<button type="button" class="link-btn" data-action="toggle-done" aria-expanded="${state.settings.showDone}">${esc(title)} <span class="count">${list.length}</span>${icon('down', state.settings.showDone ? 'flip' : '')}</button>`
+      : `${opts.icon ? icon(opts.icon) : ''}${esc(title)} <span class="count">${list.length}</span>`;
     return `<section class="tgroup${opts.cls ? ' ' + opts.cls : ''}">
-      <h3 class="tgroup-head">${opts.toggle ? `<button type="button" class="link-btn" data-action="toggle-done" aria-expanded="${state.settings.showDone}">${esc(title)} <span class="count">${list.length}</span>${icon('down', state.settings.showDone ? 'flip' : '')}</button>` : `${esc(title)} <span class="count">${list.length}</span>`}</h3>
+      <h3 class="tgroup-head">${head}</h3>
       ${opts.collapsed ? '' : `<ul class="tlist">${list.map((t) => taskRow(t, opts)).join('')}</ul>`}
     </section>`;
   }
@@ -662,33 +765,39 @@
   function renderTaskList() {
     const el = $('#task-list');
     if (!el) return;
-    const td = today();
-    const list = visibleTasks();
-    const open = sortTasks(list.filter((t) => !t.done));
-    const done = list.filter((t) => t.done).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || '')).slice(0, 50);
-    const overdue = open.filter((t) => t.due && t.due < td);
-    const todays = open.filter((t) => t.due === td);
-    const upcoming = open.filter((t) => t.due && t.due > td);
-    const nodate = open.filter((t) => !t.due);
+    const b = S.buckets(visibleTasks(), today());
+    const doneAll = visibleTasks().filter((t) => t.done).sort((x, y) => (y.doneAt || '').localeCompare(x.doneAt || '')).slice(0, 50);
+    const open = b.doing.length + b.overdue.length + b.today.length + b.upcoming.length + b.nodate.length;
     let html = '';
     if (ui.serverHint && !Sync.on) {
       html += `<div class="banner">${icon('cloud')}<div><strong>พบเซิร์ฟเวอร์ X10</strong><span>เชื่อมต่อเพื่อซิงก์ข้อมูลและให้แอปอื่นส่งงานเข้ามาได้</span></div><button type="button" class="btn small primary" data-action="connect-server">เชื่อมต่อ</button></div>`;
     }
-    if (state.tasks.some((t) => t.sample)) {
+    if (state.tasks.some((t) => t.sample) && !ui.filter) {
       html += `<div class="banner soft">${icon('tasks')}<div><strong>รายการนี้เป็นงานตัวอย่าง</strong><span>ลองแตะวงกลมเพื่อทำเสร็จ หรือแตะงานเพื่อแก้ไข</span></div><button type="button" class="btn small ghost" data-action="clear-samples">ลบตัวอย่าง</button></div>`;
     }
-    if (!open.length && !done.length) {
+    if (ui.filter) {
+      const m = STATUS_META[ui.filter];
+      const list = ui.filter === 'done' ? b.doneToday : b[ui.filter];
+      html += `<div class="filter-bar ${m.cls}">${icon(m.icon)}<span>แสดงเฉพาะ <strong>${m.label}</strong> · ${list.length} งาน</span><button type="button" class="btn small ghost" data-action="filter" data-filter="">ดูทั้งหมด</button></div>`;
+      html += list.length
+        ? `<section class="tgroup"><ul class="tlist">${sortTasks(list.slice()).map((t) => taskRow(t, { showDate: true })).join('')}</ul></section>`
+        : `<div class="empty small">${icon('check', 'big')}<p class="empty-title">ไม่มีงานในสถานะนี้</p></div>`;
+      el.innerHTML = html;
+      return;
+    }
+    if (!open && !doneAll.length) {
       html += ui.search
         ? `<div class="empty"><p class="empty-title">ไม่พบงานที่ตรงกับ “${esc(ui.search)}”</p></div>`
         : `<div class="empty">${icon('sun', 'big')}<p class="empty-title">ยังไม่มีงานในหมวดนี้</p><p>แตะปุ่ม + ด้านล่างเพื่อเพิ่มงานแรก</p></div>`;
-    } else if (!open.length) {
+    } else if (!open) {
       html += `<div class="empty small">${icon('check', 'big')}<p class="empty-title">เคลียร์งานหมดแล้ว</p></div>`;
     }
-    html += group('เลยกำหนด', overdue, { cls: 'late', showDate: true });
-    html += group('วันนี้', todays);
-    html += group('เร็ว ๆ นี้', upcoming, { showDate: true });
-    html += group('ไม่มีกำหนด', nodate);
-    html += group('เสร็จแล้ว', done, { cls: 'finished', toggle: true, collapsed: !state.settings.showDone, showDate: true });
+    html += group('กำลังทำ', b.doing, { cls: 'g-doing', icon: 'play', showDate: true });
+    html += group('เลยกำหนด', b.overdue, { cls: 'g-overdue', icon: 'alert', showDate: true });
+    html += group('วันนี้', b.today, { icon: 'sun' });
+    html += group('เร็ว ๆ นี้', b.upcoming, { icon: 'calendar', showDate: true });
+    html += group('ไม่มีกำหนด', b.nodate, { icon: 'tasks' });
+    html += group('เสร็จแล้ว', doneAll, { cls: 'finished', toggle: true, collapsed: !state.settings.showDone, showDate: true });
     el.innerHTML = html;
   }
 
@@ -713,18 +822,19 @@
       const p = pct(mins(t.time));
       lane = p - lastPct < 4 ? (lane + 1) % 3 : 0;
       lastPct = p;
-      return `<button type="button" class="tl-dot${t.done ? ' done' : ''}" style="left:${p}%;--lane:${lane};--cat:${catColor(t.category)}" data-action="open" data-id="${esc(t.id)}" aria-label="${esc(t.time + ' ' + t.title)}"></button>`;
+      return `<button type="button" class="tl-dot st-${S.statusOf(t)}" style="left:${p}%;--lane:${lane};--cat:${catColor(t.category)}" data-action="open" data-id="${esc(t.id)}" aria-label="${esc(t.time + ' ' + t.title)}"></button>`;
     }).join('');
-    const nowMark = nowM >= startH * 60 && nowM <= endH * 60 ? `<span class="tl-now" style="left:${pct(nowM)}%"><span>ตอนนี้</span></span>` : '';
-    return `<div class="timeline" aria-label="เส้นเวลางานวันนี้"><div class="tl-track">${nowMark}${dots}</div><div class="tl-ticks">${ticks.join('')}</div></div>`;
+    const passed = nowM >= startH * 60 ? `<span class="tl-passed" style="width:${pct(nowM)}%"></span>` : '';
+    const nowMark = nowM >= startH * 60 && nowM <= endH * 60 ? `<span class="tl-now" style="left:${pct(nowM)}%"><span>${S.pad(now.getHours())}:${S.pad(now.getMinutes())}</span></span>` : '';
+    return `<div class="timeline" aria-label="เส้นเวลางานวันนี้"><div class="tl-track">${passed}${nowMark}${dots}</div><div class="tl-ticks">${ticks.join('')}</div></div>`;
   }
 
   function progressRing(done, total) {
-    const r = 21;
+    const r = 23;
     const c = 2 * Math.PI * r;
     const f = total ? done / total : 0;
     return `<div class="ring" role="img" aria-label="วันนี้เสร็จ ${done} จาก ${total} งาน">
-      <svg viewBox="0 0 52 52"><circle class="ring-bg" cx="26" cy="26" r="${r}"/><circle class="ring-fg" cx="26" cy="26" r="${r}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}"/></svg>
+      <svg viewBox="0 0 56 56"><circle class="ring-bg" cx="28" cy="28" r="${r}"/><circle class="ring-fg" cx="28" cy="28" r="${r}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}"/></svg>
       <span class="ring-num">${done}<small>/${total}</small></span></div>`;
   }
 
@@ -748,32 +858,66 @@
     return 'สวัสดีตอนเย็น';
   }
 
+  // The four status tiles — the same layout as the Android home-screen widget.
+  function statusTiles(b) {
+    const counts = { overdue: b.overdue.length, today: b.today.length, doing: b.doing.length, done: b.doneToday.length };
+    return `<div class="tiles" role="toolbar" aria-label="สถานะงาน">${Object.keys(STATUS_META).map((k) => {
+      const m = STATUS_META[k];
+      return `<button type="button" class="tile ${m.cls}${ui.filter === k ? ' on' : ''}${counts[k] ? '' : ' zero'}" data-action="filter" data-filter="${k}" aria-pressed="${ui.filter === k}">
+        <span class="tile-icon">${icon(m.icon)}</span><span class="tile-num">${counts[k]}</span><span class="tile-label">${m.label}</span></button>`;
+    }).join('')}</div>`;
+  }
+
+  function nextUpCard(t) {
+    if (!t) return '';
+    const st = S.statusOf(t);
+    const cat = catOf(t.category);
+    const late = t.due && (t.due < today() || untilLabel(t).startsWith('เลย'));
+    const label = st === 'doing' ? 'กำลังทำอยู่' : 'ถัดไป';
+    return `<section class="next ${st === 'doing' ? 'is-doing' : ''}${late ? ' is-late' : ''}" style="--cat:${catColor(t.category)}" aria-label="${label}">
+      <button type="button" class="next-main" data-action="open" data-id="${esc(t.id)}">
+        <span class="next-eyebrow">${icon(st === 'doing' ? 'play' : 'clock')}${label}${t.due ? ` · <b>${esc(untilLabel(t))}</b>` : ''}</span>
+        <span class="next-title">${esc(t.title)}</span>
+        <span class="next-meta">${cat ? `<span class="cat-tag"><i></i>${esc(cat.name)}</span>` : ''}${t.time ? `<span>${icon('clock')}${esc(t.time)}</span>` : ''}${t.subtasks && t.subtasks.length ? `<span>${icon('checklist')}${t.subtasks.filter((s) => s.done).length}/${t.subtasks.length}</span>` : ''}</span>
+      </button>
+      <div class="next-actions">
+        ${st === 'doing'
+          ? `<button type="button" class="btn small primary" data-action="toggle" data-id="${esc(t.id)}">${icon('check')} เสร็จแล้ว</button>`
+          : `<button type="button" class="btn small doing" data-action="start" data-id="${esc(t.id)}">${icon('play')} เริ่มทำ</button>
+             <button type="button" class="btn small ghost" data-action="toggle" data-id="${esc(t.id)}" aria-label="ทำเสร็จ">${icon('check')}</button>`}
+      </div>
+    </section>`;
+  }
+
   function viewTasks() {
     const td = today();
     const d = toDate(td);
     const scoped = ui.category === 'all' ? state.tasks : state.tasks.filter((t) => t.category === ui.category);
-    const todayAll = scoped.filter((t) => t.due === td || (t.done && t.doneAt && S.todayIn(undefined, new Date(t.doneAt)) === td && t.due && t.due < td));
-    const doneToday = todayAll.filter((t) => t.done).length;
+    const b = S.buckets(scoped, td);
+    const dueToday = scoped.filter((t) => t.due === td || (t.done && b.doneToday.includes(t)));
+    const doneToday = dueToday.filter((t) => t.done).length;
     const chips = [{ id: 'all', name: 'ทั้งหมด' }].concat(state.categories).map((c) => {
       const n = c.id === 'all' ? state.tasks.filter((t) => !t.done).length : state.tasks.filter((t) => !t.done && t.category === c.id).length;
       return `<button type="button" class="chip${ui.category === c.id ? ' on' : ''}" data-action="cat" data-cat="${esc(c.id)}" style="--cat:${c.id === 'all' ? 'var(--accent)' : `var(--c-${c.color})`}" aria-pressed="${ui.category === c.id}">${c.id === 'all' ? '' : '<i class="dot"></i>'}${esc(c.name)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
     }).join('');
     return `
-      <header class="hero">
-        <div class="hero-top">
-          <p class="greet">${greeting()}</p>
-          <div class="hero-actions">${syncPill()}
-            <button type="button" class="icon-btn" data-action="search" aria-label="ค้นหางาน" aria-expanded="${ui.searchOpen}">${icon('search')}</button></div>
-        </div>
+      <header class="topbar">
+        <div class="topbar-text"><p class="greet">${greeting()}</p><p class="brand">X10 Tasks</p></div>
+        <div class="hero-actions">${syncPill()}
+          <button type="button" class="icon-btn" data-action="search" aria-label="ค้นหางาน" aria-expanded="${ui.searchOpen}">${icon('search')}</button></div>
+      </header>
+      <section class="hero" aria-label="ภาพรวมวันนี้">
         <div class="date-row">
           <div class="date-block">
             <span class="date-num">${d.getDate()}</span>
             <span class="date-text"><span class="date-wd">${F_WEEKDAY.format(d)}</span><span class="date-my">${F_MONTH_YEAR.format(d)}</span></span>
           </div>
-          <div class="ring-wrap">${progressRing(doneToday, todayAll.length)}<span class="ring-cap">เสร็จวันนี้</span></div>
+          <div class="ring-wrap">${progressRing(doneToday, dueToday.length)}<span class="ring-cap">เสร็จวันนี้</span></div>
         </div>
         ${dayTimeline(scoped)}
-      </header>
+      </section>
+      ${statusTiles(b)}
+      ${ui.filter ? '' : nextUpCard(S.nextUp(b))}
       <div class="chips-bar">
         <div class="search-row"${ui.searchOpen ? '' : ' hidden'}>
           ${icon('search')}<input id="search-input" type="search" placeholder="ค้นหางาน บันทึก หรืองานย่อย" value="${esc(ui.search)}" autocomplete="off" aria-label="ค้นหางาน">
@@ -856,7 +1000,7 @@
     const srv = state.settings.server;
     const admin = srv && srv.role !== 'app';
     const r = ui.remote;
-    const origin = DEMO ? 'https://เซิร์ฟเวอร์ของคุณ' : location.origin;
+    const origin = WEB_ORIGIN || 'https://เซิร์ฟเวอร์ของคุณ';
     const statusText = {
       connecting: 'กำลังเชื่อมต่อ…',
       online: 'เชื่อมต่อแล้ว ข้อมูลซิงก์อัตโนมัติ',
@@ -963,6 +1107,78 @@
     if (ui.view === 'connect') render();
   }
 
+  // ---------- home-screen widget previews (same layout as the Android widgets) ----------
+  const TH_WD = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+  const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  function widgetDate(ymd) {
+    const d = toDate(ymd);
+    return `${TH_WD[d.getDay()]} ${d.getDate()} ${TH_MON[d.getMonth()]}`;
+  }
+  function widgetRows(b) {
+    return b.doing.concat(b.overdue, b.today, b.upcoming.slice(0, 4), b.nodate.slice(0, 2));
+  }
+  function widgetRowMeta(t) {
+    const st = S.statusOf(t);
+    const td = today();
+    const parts = [];
+    if (st === 'doing') parts.push('<em class="doing">กำลังทำ</em>');
+    else if (t.due && t.due < td) parts.push('<em class="late">เลยกำหนด</em>');
+    if (t.due && t.due !== td) parts.push(esc(dueLabel(t.due)));
+    if (t.time) parts.push(esc(t.time));
+    const cat = catOf(t.category);
+    if (cat) parts.push(esc(cat.name));
+    return parts.join(' · ');
+  }
+  function homeWidgetSummary(b) {
+    const n = S.nextUp(b);
+    const total = b.today.length + b.doneToday.length + b.doing.filter((t) => t.due === today()).length;
+    const tiles = [['overdue', b.overdue.length, 'เลยกำหนด'], ['today', b.today.length, 'วันนี้'], ['doing', b.doing.length, 'กำลังทำ'], ['done', b.doneToday.length, 'เสร็จแล้ว']];
+    return `<div class="hw hw-summary" role="img" aria-label="ตัวอย่างวิดเจ็ตสรุปงาน">
+      <div class="hw-head"><div class="hw-title"><span class="hw-date">${esc(widgetDate(today()))}</span><span class="hw-brand">X10 Tasks · เสร็จ ${b.doneToday.length}/${total}</span></div>
+        <span class="hw-btn">${icon('refresh')}</span><span class="hw-btn add">${icon('plus')}</span></div>
+      <div class="hw-tiles">${tiles.map(([k, v, l]) => `<div class="hw-tile st-${k}${v ? '' : ' zero'}"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+      <div class="hw-next">${n ? `<span class="hw-next-k${S.statusOf(n) === 'doing' ? ' doing' : ''}">${S.statusOf(n) === 'doing' ? 'กำลังทำ' : 'ถัดไป'}${n.time ? ' ' + esc(n.time) : ''}</span><span class="hw-next-t">${esc(n.title)}</span>` : '<span class="hw-next-t">ไม่มีงานค้าง</span>'}</div>
+    </div>`;
+  }
+  function homeWidgetList(b, max = 5) {
+    const rows = widgetRows(b);
+    return `<div class="hw hw-list" role="img" aria-label="ตัวอย่างวิดเจ็ตรายการงาน">
+      <div class="hw-head"><div class="hw-title"><span class="hw-date">งานของวันนี้</span>
+        <span class="hw-counts"><i class="late">เลย ${b.overdue.length}</i><i>วันนี้ ${b.today.length}</i><i class="doing">ทำอยู่ ${b.doing.length}</i></span></div>
+        <span class="hw-btn add">${icon('plus')}</span></div>
+      <ul class="hw-rows">${rows.slice(0, max).map((t) => `<li class="st-${S.statusOf(t)}" style="--cat:${catColor(t.category)}"><span class="hw-check"></span>
+        <span class="hw-row-text"><span class="hw-row-t">${esc(t.title)}</span><span class="hw-row-m">${widgetRowMeta(t)}</span></span>${t.priority ? `<span class="hw-flag p${t.priority}">${icon('flag')}</span>` : ''}</li>`).join('') || '<li class="hw-empty">ไม่มีงานค้าง เยี่ยมมาก</li>'}</ul>
+      ${rows.length > max ? `<p class="hw-more">อีก ${rows.length - max} งาน · แตะเพื่อเปิดแอป</p>` : ''}
+    </div>`;
+  }
+  function widgetsPanel() {
+    const b = S.buckets(state.tasks, today());
+    let howto;
+    if (NATIVE) {
+      let canPin = false;
+      try {
+        canPin = NATIVE.canPinWidget();
+      } catch (e) {
+        /* older app */
+      }
+      howto = `${canPin ? `<div class="btn-row">
+          <button type="button" class="btn primary" data-action="pin-widget" data-kind="summary">${icon('widget')} วางวิดเจ็ตสรุป</button>
+          <button type="button" class="btn ghost" data-action="pin-widget" data-kind="list">${icon('tasks')} วางวิดเจ็ตรายการงาน</button></div>` : ''}
+        <p class="hint">หรือกดค้างที่ว่างบนหน้าจอโฮม แล้วเลือก “วิดเจ็ต” → X10 Tasks ติ๊กงานเสร็จจากวิดเจ็ตได้เลย และวิดเจ็ตจะอัปเดตทุกครั้งที่งานเปลี่ยน</p>`;
+    } else {
+      howto = `<ol class="steps">
+          <li>ติดตั้งแอป X10 Tasks สำหรับ Android (ไฟล์ <code>x10-tasks.apk</code>)</li>
+          <li>กดค้างที่ว่างบนหน้าจอโฮม แล้วเลือก “วิดเจ็ต”</li>
+          <li>เลือก X10 Tasks แล้วลากวิดเจ็ต “สรุปงาน” หรือ “รายการงาน” ไปวาง</li>
+        </ol>`;
+    }
+    return `<section class="panel widgets-panel">
+      <div class="panel-head"><span class="panel-icon">${icon('widget')}</span><div><h2>วิดเจ็ตหน้าจอโฮม</h2><p>เปิดมือถือก็เห็นสถานะงานทันที ไม่ต้องเข้าแอป</p></div></div>
+      <div class="wallpaper">${homeWidgetSummary(b)}${homeWidgetList(b, 4)}</div>
+      ${howto}
+    </section>`;
+  }
+
   // ---------- options ----------
   function viewOptions() {
     const td = today();
@@ -979,10 +1195,18 @@
     const week = days.reduce((a, d) => a + counts[d], 0);
     const max = Math.max(1, ...Object.values(counts));
     const strip = days.map((d) => `<li class="${d === td ? 'is-today' : ''}"><span class="w-count">${counts[d]}</span><span class="w-cell" style="--f:${counts[d] / max}"></span><span class="w-day">${esc(fmt({ weekday: 'narrow' }).format(toDate(d)))}</span></li>`).join('');
-    const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+    let perm = 'Notification' in window ? Notification.permission : 'unsupported';
+    if (NATIVE) {
+      try {
+        perm = NATIVE.notificationPermission();
+      } catch (e) {
+        perm = 'granted';
+      }
+    }
     const themes = [['system', 'ตามระบบ'], ['light', 'สว่าง'], ['dark', 'มืด']];
     return `
       <header class="page-head"><p class="eyebrow">ตั้งค่า</p><h1>ภาพรวมและการตั้งค่า</h1></header>
+      ${widgetsPanel()}
       <section class="panel">
         <div class="stats">
           <div><span class="stat-num">${open.length}</span><span class="stat-label">งานค้าง</span></div>
@@ -998,10 +1222,10 @@
       </section>
       <section class="panel">
         <h2>การแจ้งเตือน</h2>
-        <p class="muted">${perm === 'granted' ? 'เปิดแล้ว แอปจะเตือนตามเวลาที่ตั้งไว้ในแต่ละงาน' : perm === 'denied' ? 'ถูกปิดไว้ในการตั้งค่าเบราว์เซอร์ เปิดได้ที่การตั้งค่าเว็บไซต์ของเบราว์เซอร์' : perm === 'unsupported' ? 'อุปกรณ์นี้ไม่รองรับการแจ้งเตือน แอปจะแสดงข้อความเตือนในหน้าจอแทน' : 'อนุญาตให้แอปแจ้งเตือนเมื่อถึงเวลาทำงาน'}</p>
+        <p class="muted">${perm === 'granted' ? (NATIVE ? 'เปิดแล้ว มือถือจะเตือนตามเวลาที่ตั้งไว้ แม้ปิดแอปอยู่' : 'เปิดแล้ว แอปจะเตือนตามเวลาที่ตั้งไว้ในแต่ละงาน') : perm === 'denied' ? (NATIVE ? 'ถูกปิดไว้ เปิดได้ที่ การตั้งค่า → แอป → X10 Tasks → การแจ้งเตือน' : 'ถูกปิดไว้ในการตั้งค่าเบราว์เซอร์ เปิดได้ที่การตั้งค่าเว็บไซต์ของเบราว์เซอร์') : perm === 'unsupported' ? 'อุปกรณ์นี้ไม่รองรับการแจ้งเตือน แอปจะแสดงข้อความเตือนในหน้าจอแทน' : 'อนุญาตให้แอปแจ้งเตือนเมื่อถึงเวลาทำงาน'}</p>
         ${perm === 'default' ? `<button type="button" class="btn primary" data-action="enable-notify">${icon('bell')} เปิดการแจ้งเตือน</button>` : ''}
       </section>
-      ${ui.installPrompt ? `<section class="panel"><h2>ติดตั้งลงมือถือ</h2><p class="muted">เปิดได้จากหน้าจอโฮมเหมือนแอปทั่วไป ใช้งานได้แม้ออฟไลน์</p><button type="button" class="btn primary" data-action="install">${icon('download')} ติดตั้งแอป</button></section>` : ''}
+      ${ui.installPrompt && !NATIVE ? `<section class="panel"><h2>ติดตั้งลงมือถือ</h2><p class="muted">เปิดได้จากหน้าจอโฮมเหมือนแอปทั่วไป ใช้งานได้แม้ออฟไลน์</p><button type="button" class="btn primary" data-action="install">${icon('download')} ติดตั้งแอป</button></section>` : ''}
       <section class="panel">
         <h2>หมวดหมู่</h2>
         <ul class="rows">${state.categories.map((c) => `
@@ -1021,13 +1245,14 @@
           ${Sync.on ? '' : `<button type="button" class="btn ghost danger-text" data-action="clear-all">${icon('trash')} ลบข้อมูลทั้งหมดในเครื่องนี้</button>`}
         </div>
       </section>
-      <p class="about">X10 Tasks เวอร์ชัน ${S.VERSION}${DEMO ? ' · โหมดตัวอย่าง' : ''}<br>เวลาของเครื่อง: ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone || '')}</p>`;
+      <p class="about">X10 Tasks เวอร์ชัน ${S.VERSION}${DEMO ? ' · โหมดตัวอย่าง' : ''}${NATIVE ? ' · แอป Android' : ''}<br>เวลาของเครื่อง: ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone || '')}</p>`;
   }
 
   // ---------- editor ----------
   const REMINDERS = [['', 'ไม่แจ้งเตือน'], ['0', 'ตรงเวลา'], ['5', 'ก่อน 5 นาที'], ['15', 'ก่อน 15 นาที'], ['30', 'ก่อน 30 นาที'], ['60', 'ก่อน 1 ชั่วโมง'], ['1440', 'ก่อน 1 วัน']];
   const REPEAT_OPTS = [['', 'ไม่ทำซ้ำ'], ['daily', 'ทุกวัน'], ['weekdays', 'ทุกวันทำงาน (จ.–ศ.)'], ['weekly', 'ทุกสัปดาห์'], ['monthly', 'ทุกเดือน'], ['yearly', 'ทุกปี']];
   const PRIOS = [[0, 'ปกติ'], [1, 'สำคัญ'], [2, 'ด่วน']];
+  const STATUS_OPTS = [['todo', 'รอทำ', 'clock'], ['doing', 'กำลังทำ', 'play'], ['done', 'เสร็จแล้ว', 'check']];
 
   function quickDue(kind) {
     const td = today();
@@ -1056,6 +1281,8 @@
         <label class="sr-only" for="f-title">ชื่องาน</label>
         <textarea id="f-title" class="title-input" rows="2" maxlength="500" placeholder="ต้องทำอะไร?" ${existing ? '' : 'autofocus'}>${esc(t.title)}</textarea>
         <p class="field-error" id="f-title-err" hidden>ใส่ชื่องานก่อนบันทึก</p>
+
+        <div class="status-pick" role="radiogroup" aria-label="สถานะ">${STATUS_OPTS.map(([v, l, ic]) => `<label class="sp sp-${v}"><input type="radio" name="status" value="${v}"${S.statusOf(t) === v ? ' checked' : ''}><span>${icon(ic)}${l}</span></label>`).join('')}</div>
 
         <div class="field">
           <span class="field-label">${icon('calendar')} วันที่</span>
@@ -1172,10 +1399,14 @@
       };
       if (fields.repeat && !fields.due) fields.due = today();
       closeSheet();
+      const status = ($('input[name="status"]:checked', sheet) || { value: 'todo' }).value;
       if (existing) {
         updateTask(existing.id, fields);
+        setTaskStatus(existing.id, status);
         toast('บันทึกแล้ว');
       } else {
+        if (status === 'done') fields.done = true;
+        if (status === 'doing') fields.status = 'doing';
         addTask(fields);
         toast(fields.due && fields.due !== today() ? `เพิ่มงานแล้ว · ${dueLabel(fields.due)}` : 'เพิ่มงานแล้ว');
       }
@@ -1371,7 +1602,7 @@
     const localCount = state.tasks.filter((t) => !t.sample).length;
     const html = `${sheetHead('เชื่อมต่อเซิร์ฟเวอร์ X10', 'ซิงก์หลายเครื่อง และเปิด API ให้แอปอื่น')}
       <form class="editor" id="srv-form" novalidate>
-        <label class="field"><span class="field-label">ที่อยู่เซิร์ฟเวอร์</span><input type="url" id="s-url" inputmode="url" value="${esc(DEMO ? '' : location.origin)}" placeholder="https://tasks.example.com" autocomplete="url" spellcheck="false"></label>
+        <label class="field"><span class="field-label">ที่อยู่เซิร์ฟเวอร์</span><input type="url" id="s-url" inputmode="url" value="${esc(WEB_ORIGIN)}" placeholder="https://tasks.example.com" autocomplete="url" spellcheck="false"></label>
         <label class="field"><span class="field-label">คีย์ผู้ดูแล</span><input type="password" id="s-key" placeholder="x10_…" autocomplete="off" spellcheck="false" autofocus></label>
         <p class="hint">คีย์จะแสดงในหน้าต่างเซิร์ฟเวอร์ตอนเปิดครั้งแรก ถ้าลืม ให้รัน <code>node server/index.js --new-admin-key</code></p>
         ${DEMO ? '<p class="hint">หน้านี้เป็นตัวอย่างบนเว็บ จึงเชื่อมต่อเซิร์ฟเวอร์ภายนอกไม่ได้ ให้ใช้แอปที่เปิดจากเซิร์ฟเวอร์ X10 ของคุณ</p>' : ''}
@@ -1408,6 +1639,7 @@
             for (let i = 0; i < mine.length; i += 400) await Sync.api('POST', '/tasks', mine.slice(i, i + 400), server);
           }
           state.settings.server = server;
+          Native.server();
           state.outbox = [];
           ui.serverHint = false;
           ui.remote = { keys: [], webhooks: [], connectors: [], loaded: false, error: null };
@@ -1439,7 +1671,7 @@
 
   // ---------- views & navigation ----------
   const VIEWS = { tasks: viewTasks, calendar: viewCalendar, connect: viewConnect, options: viewOptions };
-  const TABS = [['tasks', 'tasks', 'งาน'], ['calendar', 'calendar', 'ปฏิทิน'], ['connect', 'plug', 'เชื่อมต่อ'], ['options', 'sliders', 'ตั้งค่า']];
+  const TABS = [['tasks', 'tasks', 'งาน'], ['calendar', 'calendar', 'ปฏิทิน'], null, ['connect', 'plug', 'เชื่อมต่อ'], ['options', 'sliders', 'ตั้งค่า']];
 
   function render() {
     applyTheme();
@@ -1447,8 +1679,9 @@
     view.innerHTML = VIEWS[ui.view]();
     view.dataset.view = ui.view;
     if (ui.view === 'tasks') renderTaskList();
-    $('#tabbar').innerHTML = TABS.map(([v, ic, label]) => `<button type="button" class="tab${ui.view === v ? ' on' : ''}" data-action="go" data-view="${v}" ${ui.view === v ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></button>`).join('');
-    $('#fab').hidden = !(ui.view === 'tasks' || ui.view === 'calendar');
+    $('#tabbar').innerHTML = TABS.map((tab) => tab
+      ? `<button type="button" class="tab${ui.view === tab[0] ? ' on' : ''}" data-action="go" data-view="${tab[0]}" ${ui.view === tab[0] ? 'aria-current="page"' : ''}>${icon(tab[1])}<span>${tab[2]}</span></button>`
+      : `<button type="button" class="fab" data-action="new-task" aria-label="เพิ่มงาน">${icon('plus')}</button>`).join('');
     const search = $('#search-input');
     if (search) {
       search.addEventListener('input', () => {
@@ -1484,14 +1717,32 @@
       const id = el.dataset.id;
       const t = findTask(id);
       if (!t) return;
-      const row = el.closest('.task');
+      const before = S.statusOf(t);
+      const row = el.closest('.task, .next');
       if (row) row.classList.add(t.done ? 'unchecking' : 'checking');
       setTimeout(() => {
         const r = setTaskDone(id, !t.done);
         if (r && r.task.done) {
-          toast(r.spawn ? `เสร็จแล้ว · ครั้งถัดไป ${dueLabel(r.spawn.due)}` : 'เสร็จแล้ว', { action: 'เลิกทำ', onAction: () => setTaskDone(id, false) });
+          toast(r.spawn ? `เสร็จแล้ว · ครั้งถัดไป ${dueLabel(r.spawn.due)}` : 'เสร็จแล้ว', { action: 'เลิกทำ', onAction: () => setTaskStatus(id, before) });
         }
       }, 260);
+    },
+    start: (el) => {
+      setTaskStatus(el.dataset.id, 'doing');
+      toast('เริ่มทำแล้ว');
+    },
+    filter: (el) => {
+      ui.filter = ui.filter === el.dataset.filter ? '' : el.dataset.filter;
+      render();
+      const list = $('#task-list');
+      if (ui.filter && list) list.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    },
+    'pin-widget': (el) => {
+      try {
+        if (!NATIVE.pinWidget(el.dataset.kind)) toast('มือถือรุ่นนี้ให้วางวิดเจ็ตเองจากหน้าจอโฮม');
+      } catch (e) {
+        toast('วางวิดเจ็ตไม่สำเร็จ ลองกดค้างที่หน้าจอโฮมแล้วเลือกวิดเจ็ต');
+      }
     },
     'toggle-done': () => {
       state.settings.showDone = !state.settings.showDone;
@@ -1569,6 +1820,10 @@
       render();
     },
     'enable-notify': async () => {
+      if (NATIVE) {
+        NATIVE.requestNotificationPermission();
+        return;
+      }
       try {
         await Notification.requestPermission();
       } catch (e) {
@@ -1589,7 +1844,7 @@
       const url = URL.createObjectURL(blob);
       openSheet(`${sheetHead('ส่งออกข้อมูล', `${state.tasks.length} งาน`)}
         <div class="editor">
-          ${DEMO ? '<p class="hint">หน้าตัวอย่างนี้ดาวน์โหลดไฟล์ไม่ได้ คัดลอกข้อความด้านล่างไปเก็บไว้แทน</p>' : `<a class="btn primary" href="${url}" download="x10-tasks-${today()}.json">${icon('download')} ดาวน์โหลดไฟล์</a>
+          ${DEMO || NATIVE ? '<p class="hint">คัดลอกข้อความด้านล่างไปเก็บไว้ แล้วใช้ “นำเข้าจากไฟล์ JSON” เพื่อกู้คืน</p>' : `<a class="btn primary" href="${url}" download="x10-tasks-${today()}.json">${icon('download')} ดาวน์โหลดไฟล์</a>
           <p class="hint">ถ้าดาวน์โหลดไม่ได้ คัดลอกข้อความด้านล่างไปเก็บไว้แทน</p>`}
           ${copyBox(data, { pre: true })}
         </div>`, { label: 'ส่งออกข้อมูล' });
@@ -1599,6 +1854,7 @@
       const pending = state.outbox.length;
       if (!(await confirmDialog({ title: 'ตัดการเชื่อมต่อเซิร์ฟเวอร์?', message: pending ? `ยังมี ${pending} รายการที่ยังไม่ได้ส่งขึ้นเซิร์ฟเวอร์ ซึ่งจะไม่ถูกส่ง งานทั้งหมดจะยังอยู่ในเครื่องนี้` : 'งานทั้งหมดจะยังอยู่ในเครื่องนี้ และใช้งานแบบออฟไลน์ต่อได้', confirm: 'ตัดการเชื่อมต่อ', danger: true }))) return;
       state.settings.server = null;
+      Native.server();
       state.outbox = [];
       Sync.stop();
       changed();
@@ -1817,11 +2073,55 @@
   }
 
   // ---------- boot ----------
-  $('#fab').addEventListener('click', () => ACTIONS['new-task']());
+  // Called by the Android app (widget taps, back button, returning to the app).
+  window.X10App = {
+    openTask: (id) => {
+      if (ui.view !== 'tasks') go('tasks');
+      openEditor(id);
+    },
+    newTask: () => openEditor(null),
+    filter: (f) => {
+      closeSheet();
+      ui.filter = STATUS_META[f] ? f : '';
+      go('tasks');
+    },
+    resume: () => {
+      Native.applyWidgetActions();
+      render();
+      Reminders.check();
+      Native.push();
+      if (Sync.on && Sync.status !== 'online') Sync.start();
+    },
+    permissionChanged: () => ui.view === 'options' && render(),
+    back: () => {
+      if (!$('#dialog-root').hidden) {
+        const cancel = $('#dialog-root [data-r="0"]');
+        if (cancel) cancel.click();
+        return true;
+      }
+      if (!$('#sheet-root').hidden) {
+        closeSheet();
+        return true;
+      }
+      if (ui.filter) {
+        ui.filter = '';
+        render();
+        return true;
+      }
+      if (ui.view !== 'tasks') {
+        go('tasks');
+        return true;
+      }
+      return false;
+    },
+  };
   seed();
   ui.view = VIEWS[(location.hash || '').slice(1)] ? location.hash.slice(1) : 'tasks';
   render();
   Reminders.start();
+  Native.server();
+  Native.applyWidgetActions();
+  Native.push();
   Sync.start().then(() => ui.view === 'connect' && loadRemote());
   detectServer();
   handleIncoming();
