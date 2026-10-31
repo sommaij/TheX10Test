@@ -200,6 +200,12 @@ final class Bridge {
         }).start();
     }
 
+    /** kind: "tick" (swipe passes the line, a step), "success" (task finished), "celebrate" (day cleared). */
+    @JavascriptInterface
+    public void haptic(String kind) {
+        activity.haptic(kind);
+    }
+
     @JavascriptInterface
     public String platform() {
         return "android " + Build.VERSION.SDK_INT;

@@ -257,7 +257,7 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .date-wd { font-family: var(--font-display); font-size: 21px; }
 .date-my { font-size: 14px; opacity: 0.8; }
 .ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
-.ring { position: relative; width: 62px; height: 62px; }
+.ring { position: relative; width: 62px; height: 62px; border-radius: 50%; }
 .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring circle { fill: none; stroke-width: 5.5; }
 .ring-bg { stroke: rgb(255 255 255 / 0.22); }
@@ -398,10 +398,13 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
   list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: 20px; overflow: hidden;
   box-shadow: var(--shadow-1); border: 1px solid var(--card-border);
 }
-.task {
+.task { position: relative; touch-action: pan-y; }
+.task-row {
+  position: relative; z-index: 1; background: var(--surface);
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 4px;
-  padding: 6px 10px 6px 8px; position: relative;
+  padding: 6px 10px 6px 8px; transition: background-color 0.15s;
 }
+.task + .task::before { z-index: 2; }
 .task + .task::before { content: ""; position: absolute; top: 0; left: 54px; right: 14px; height: 1px; background: var(--line); }
 .check { width: 46px; height: 46px; border: 0; background: none; padding: 0; display: grid; place-items: center; }
 .check::before {
@@ -412,11 +415,11 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .task.st-doing .check::before { border-color: var(--doing); background: conic-gradient(var(--doing) 0 50%, transparent 0); }
 .task.st-done .check::before, .task.checking .check::before { background: var(--cat); border-color: var(--cat); }
 .task.st-done .check .i, .task.checking .check .i { opacity: 1; }
-.task.checking .check::before { animation: pop 0.26s ease; }
+.task.checking .check::before { animation: settle 0.24s var(--ease-out); }
 .task.unchecking .check::before { background: transparent; }
 .task.unchecking .check .i { opacity: 0; }
 .task.checking .task-title { color: var(--ink-3); }
-@keyframes pop { 50% { transform: scale(1.18); } }
+@keyframes settle { from { transform: scale(0.86); } }
 .task-body {
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left;
   border: 0; background: none; padding: 11px 2px; min-width: 0;
@@ -668,12 +671,16 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
   max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px); overflow-y: auto; overscroll-behavior: contain;
   background: var(--surface); border-radius: 26px 26px 0 0; box-shadow: var(--shadow-2);
   padding: 0 var(--gutter-r) calc(16px + env(safe-area-inset-bottom, 0px)) var(--gutter-l);
-  transform: translateY(100%); transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translateY(100%); transition: transform 0.24s cubic-bezier(0.4, 0, 0.9, 0.5);
 }
+#sheet-root.open .sheet { transition: transform 0.34s var(--ease-out); }
+.sheet.dragging { transition: none !important; }
 .sheet.wide { max-width: 640px; }
 #sheet-root.open .sheet-backdrop { opacity: 1; }
 #sheet-root.open .sheet { transform: none; }
-.sheet-grip { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 8px auto 0; }
+.sheet-grip { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 8px auto 0; position: relative; touch-action: none; cursor: grab; }
+.sheet-grip::after { content: ""; position: absolute; inset: -12px -80px -8px; }
+.sheet-head { touch-action: none; }
 .sheet-head {
   position: sticky; top: 0; z-index: 2; background: var(--surface);
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 0;
@@ -782,8 +789,17 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .toast {
   pointer-events: auto; display: flex; align-items: center; gap: 12px; max-width: min(100%, 480px);
   padding: 10px 10px 10px 16px; border-radius: 16px; background: var(--ink); color: var(--paper);
-  box-shadow: var(--shadow-2); font-size: 14.5px; animation: rise 0.2s ease;
+  box-shadow: var(--shadow-2); font-size: 14.5px; animation: toast-in 0.24s var(--ease-out);
+  position: relative; overflow: hidden;
 }
+.toast.out { animation: toast-out 0.2s ease forwards; }
+.toast.timed::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent-soft); opacity: 0.4;
+  transform-origin: left; animation: countdown 5s linear forwards;
+}
+@keyframes toast-in { from { transform: translateY(6px); opacity: 0; } }
+@keyframes toast-out { to { opacity: 0; } }
+@keyframes countdown { to { transform: scaleX(0); } }
 .toast-msg { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .toast .i { width: 18px; height: 18px; }
 .toast-btn { border: 0; background: none; color: var(--accent-soft); font-weight: 700; padding: 6px 8px; border-radius: 8px; white-space: nowrap; }
@@ -1018,3 +1034,63 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .use-opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sheets-guide .steps b { color: var(--ink); }
 .code-box { max-height: 280px; overflow: auto; }
+
+/* ---------- motion: short, quiet, no bounce ---------- */
+:root { --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); }
+.no-motion *, .no-motion *::before, .no-motion *::after { animation: none !important; transition: none !important; }
+.color-fade, .color-fade * { transition: background-color 0.35s, color 0.35s, border-color 0.35s, fill 0.35s, stroke 0.35s !important; }
+
+/* finishing a task: the tick draws, a thin line strikes the title, the row dims */
+.check .i path { stroke-dasharray: 21; stroke-dashoffset: 0; }
+.task.checking .check .i path { animation: draw 0.28s 0.04s var(--ease-out) backwards; }
+@keyframes draw { from { stroke-dashoffset: 21; } }
+.tt { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.task.checking .tt {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 60% / 100% 1px;
+  animation: strike 0.3s 0.06s var(--ease-out) backwards;
+}
+@keyframes strike { from { background-size: 0 1px; } }
+.task.checking .task-row { opacity: 0.5; transition: opacity 0.25s 0.08s; }
+.next.checking { transition: opacity 0.25s; }
+.task-row:has(.task-body:active) { background: var(--surface-2); }
+
+/* swipe a task: soft tint behind the row, icon and word in the status colour */
+.task.swiping .task-row { background: var(--surface); box-shadow: -1px 0 0 var(--line), 1px 0 0 var(--line); }
+.swipe-hint {
+  position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; padding: 0 22px;
+  font-weight: 600; font-size: 13.5px; color: var(--ink-2); background: var(--surface-2);
+}
+.swipe-hint.right { justify-content: flex-start; }
+.swipe-hint.left { justify-content: flex-end; }
+.swipe-hint.sw-done { background: var(--ok-soft); color: var(--ok); }
+.swipe-hint.sw-doing { background: var(--doing-soft); color: var(--doing); }
+.swipe-label { display: inline-flex; align-items: center; gap: 7px; opacity: 0.55; transition: opacity 0.15s; }
+.swipe-label .i { width: 19px; height: 19px; stroke-width: 2.2; }
+.task.armed .swipe-label { opacity: 1; }
+
+/* sheets: content fades in just behind the panel */
+#sheet-root.entering .sheet > :not(.sheet-grip):not(.sheet-head):not(.sheet-foot) { animation: fade-up 0.3s 0.05s var(--ease-out) backwards; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(4px); } }
+
+/* steps: the line to the next step fills in */
+.sx.just-done::before { transform-origin: top; animation: grow 0.35s var(--ease-out) backwards; }
+.sx-dot { transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
+@keyframes grow { from { transform: scaleY(0); } }
+
+/* settings switch */
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.switch-row:last-of-type { border-bottom: 0; }
+.switch-row > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.switch-row > span > span { font-size: 13px; color: var(--ink-2); }
+.switch {
+  appearance: none; -webkit-appearance: none; flex-shrink: 0; position: relative; width: 46px; height: 28px; margin: 0;
+  border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%;
+  background: #ffffff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.2); transition: transform 0.2s var(--ease-out);
+}
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::after { transform: translateX(18px); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

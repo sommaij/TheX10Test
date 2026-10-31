@@ -3,7 +3,9 @@ package com.thex10.tasks;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.HapticFeedbackConstants;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -104,6 +106,21 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 if (web != null) web.evaluateJavascript(js, null);
+            }
+        });
+    }
+
+    /** A short buzz that follows the phone's own touch-feedback setting (no vibrate permission needed). */
+    void haptic(final String kind) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (web == null) return;
+                int fx;
+                if ("tick".equals(kind)) fx = HapticFeedbackConstants.CLOCK_TICK;
+                else if ("celebrate".equals(kind)) fx = HapticFeedbackConstants.LONG_PRESS;
+                else fx = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.VIRTUAL_KEY;
+                web.performHapticFeedback(fx);
             }
         });
     }

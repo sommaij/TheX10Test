@@ -1,7 +1,7 @@
 /* X10 Tasks service worker: offline app shell + notification clicks. */
-const CACHE = 'x10-shell-v2';
+const CACHE = 'x10-shell-v3';
 const FONTS = 'x10-fonts-v1';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/shared.js', 'js/sheets-script.js', 'js/app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/shared.js', 'js/sheets-script.js', 'js/motion.js', 'js/app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

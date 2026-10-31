@@ -5,6 +5,7 @@
   const DEMO = !!window.X10_DEMO;
   // Present when running inside the X10 Tasks Android app (home-screen widgets, native reminders).
   const NATIVE = window.X10Native || null;
+  const M = window.X10Motion || { setEnabled() {}, on: () => false, measure: () => null, flip() {}, enter() {}, countUp: (n, f, t) => n && (n.textContent = t), swipeRows() {}, sheetDrag() {} };
   const STORAGE_KEY = 'x10tasks.v1';
   // The page's own web address, when it is served from a web server (not the Android app or the demo).
   const WEB_ORIGIN = !DEMO && /^https?:$/.test(location.protocol) ? location.origin : '';
@@ -764,7 +765,7 @@
   let toastTimer = null;
   function toast(msg, opts = {}) {
     const root = $('#toast-root');
-    root.innerHTML = `<div class="toast" role="status"><span class="toast-msg">${opts.html ? msg : esc(msg)}</span>${opts.action ? `<button class="toast-btn" type="button">${esc(opts.action)}</button>` : ''}</div>`;
+    root.innerHTML = `<div class="toast${opts.action ? ' timed' : ''}" role="status"><span class="toast-msg">${opts.html ? msg : esc(msg)}</span>${opts.action ? `<button class="toast-btn" type="button">${esc(opts.action)}</button>` : ''}</div>`;
     const btn = $('.toast-btn', root);
     if (btn) {
       btn.addEventListener('click', () => {
@@ -773,7 +774,12 @@
       });
     }
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (root.innerHTML = ''), opts.action ? 5000 : 2600);
+    toastTimer = setTimeout(() => {
+      const el = $('.toast', root);
+      if (!el || !M.on()) return (root.innerHTML = '');
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 200);
+    }, opts.action ? 5000 : 2600);
   }
 
   function confirmDialog({ title, message, confirm = 'ยืนยัน', danger = false }) {
@@ -810,6 +816,9 @@
         <div class="sheet-grip" aria-hidden="true"></div>${html}</section>`;
     root.hidden = false;
     document.body.classList.add('locked');
+    root.classList.add('entering');
+    clearTimeout(openSheet.t);
+    openSheet.t = setTimeout(() => root.classList.remove('entering'), 700);
     requestAnimationFrame(() => root.classList.add('open'));
     const sheet = $('.sheet', root);
     if (onMount) onMount(sheet);
@@ -821,14 +830,14 @@
     const root = $('#sheet-root');
     ui.detailId = null;
     if (root.hidden) return;
-    root.classList.remove('open');
+    root.classList.remove('open', 'entering');
     document.body.classList.remove('locked');
     setTimeout(() => {
       if (!root.classList.contains('open')) {
         root.hidden = true;
         root.innerHTML = '';
       }
-    }, 220);
+    }, M.on() ? 260 : 0);
     if (sheetReturnFocus && sheetReturnFocus.focus) sheetReturnFocus.focus();
   }
   const sheetHead = (title, sub) => `<header class="sheet-head"><div><h2>${esc(title)}</h2>${sub ? `<p>${esc(sub)}</p>` : ''}</div>
@@ -878,6 +887,12 @@
     }
     if (el.textContent !== css) el.textContent = css;
   }
+  function fadeColors() {
+    if (!M.on()) return;
+    document.documentElement.classList.add('color-fade');
+    clearTimeout(fadeColors.t);
+    fadeColors.t = setTimeout(() => document.documentElement.classList.remove('color-fade'), 450);
+  }
   function setAccent(value) {
     state.settings.accent = value;
     save();
@@ -894,6 +909,76 @@
     else if (document.documentElement.dataset.x10theme) document.documentElement.removeAttribute('data-theme');
     if (t === 'light' || t === 'dark') document.documentElement.dataset.x10theme = t;
     else delete document.documentElement.dataset.x10theme;
+  }
+
+  // ---------- motion & playful touches ----------
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  function haptic(kind) {
+    if (state.settings.haptics === false) return;
+    try {
+      if (NATIVE && typeof NATIVE.haptic === 'function') NATIVE.haptic(kind);
+      else if (navigator.vibrate) navigator.vibrate(kind === 'success' ? 12 : 6);
+    } catch (e) {
+      /* no vibration */
+    }
+  }
+  // Today's ring just closed: one quiet glow around it.
+  function dayCleared() {
+    const ring = $('.ring');
+    if (ring && M.on()) ring.animate([{ boxShadow: '0 0 0 0 rgb(255 255 255 / 0.45)' }, { boxShadow: '0 0 0 12px rgb(255 255 255 / 0)' }], { duration: 900, easing: M.EASE });
+  }
+  // Hero numbers before a re-render, so the ring and the tiles can roll to their new values.
+  function heroNumbers() {
+    const ring = $('.ring-num');
+    return {
+      dash: ($('.ring-fg') || { getAttribute: () => null }).getAttribute('stroke-dasharray'),
+      done: ring ? parseInt(ring.firstChild.textContent, 10) : null,
+      tiles: [...document.querySelectorAll('.tile-num')].map((n) => parseInt(n.textContent, 10)),
+    };
+  }
+  function animateHero(old) {
+    if (!M.on()) return;
+    const fg = $('.ring-fg');
+    if (fg && old.dash && fg.getAttribute('stroke-dasharray') !== old.dash) {
+      const next = fg.getAttribute('stroke-dasharray');
+      fg.setAttribute('stroke-dasharray', old.dash);
+      fg.getBoundingClientRect();
+      requestAnimationFrame(() => fg.setAttribute('stroke-dasharray', next));
+    }
+    const ring = $('.ring-num');
+    if (ring && old.done !== null) {
+      const now = parseInt(ring.firstChild.textContent, 10);
+      const total = parseInt(ring.querySelector('small').textContent.replace('/', ''), 10);
+      if (now !== old.done) {
+        M.countUp(ring.firstChild, old.done, now);
+      }
+      if (now > old.done && now === total && total > 0 && Date.now() - (ui.cheerAt || 0) < 3000) setTimeout(dayCleared, 420);
+    }
+    document.querySelectorAll('.tile-num').forEach((n, i) => {
+      const was = old.tiles[i];
+      const to = parseInt(n.textContent, 10);
+      if (was === undefined || was === to) return;
+      M.countUp(n, was, to);
+    });
+  }
+  // Finish / reopen with the check animation first, then the list moves.
+  function tickTask(id, el, { delay } = {}) {
+    const t = findTask(id);
+    if (!t) return;
+    const before = S.statusOf(t);
+    const finishing = !t.done;
+    const row = el && el.closest('.task, .next');
+    if (row) row.classList.add(finishing ? 'checking' : 'unchecking');
+    if (finishing) {
+      haptic('success');
+      ui.cheerAt = Date.now();
+    }
+    setTimeout(() => {
+      const r = setTaskDone(id, finishing);
+      if (r && r.task.done) {
+        toast(r.spawn ? `เสร็จแล้ว · ครั้งถัดไป ${dueLabel(r.spawn.due)}` : 'เสร็จแล้ว', { action: 'เลิกทำ', onAction: () => setTaskStatus(id, before) });
+      }
+    }, delay !== undefined ? delay : M.on() ? (finishing ? 340 : 140) : 0);
   }
 
   // ---------- task list ----------
@@ -975,13 +1060,15 @@
     const cat = catOf(t.category);
     const steps = S.stepInfo(t).total ? `<span class="task-step">${stepBar(t)}<span class="task-step-t">${esc(stepText(t))}</span></span>` : '';
     return `<li class="task st-${st}${t.priority ? ' p' + t.priority : ''}" data-id="${esc(t.id)}" style="--cat:${catColor(t.category)}">
+      <div class="task-row">
       <button type="button" class="check" data-action="toggle" data-id="${esc(t.id)}" role="checkbox" aria-checked="${t.done}" aria-label="${t.done ? 'ยกเลิกเสร็จ' : 'ทำเสร็จ'}: ${esc(t.title)}">${icon('check')}</button>
       <button type="button" class="task-body" data-action="open" data-id="${esc(t.id)}">
-        <span class="task-title">${esc(t.title)}</span>
+        <span class="task-title"><span class="tt">${esc(t.title)}</span></span>
         ${steps}
         ${meta.length || cat ? `<span class="task-meta">${cat && ui.category === 'all' ? `<span class="cat-tag"><i></i>${esc(cat.name)}</span>` : ''}${meta.join('')}</span>` : ''}
       </button>
       ${t.priority ? `<span class="prio" title="${t.priority === 2 ? 'ด่วน' : 'สำคัญ'}">${icon('flag')}</span>` : ''}
+      </div>
     </li>`;
   }
 
@@ -990,15 +1077,24 @@
     const head = opts.toggle
       ? `<button type="button" class="link-btn" data-action="toggle-done" aria-expanded="${state.settings.showDone}">${esc(title)} <span class="count">${list.length}</span>${icon('down', state.settings.showDone ? 'flip' : '')}</button>`
       : `${opts.icon ? icon(opts.icon) : ''}${esc(title)} <span class="count">${list.length}</span>`;
-    return `<section class="tgroup${opts.cls ? ' ' + opts.cls : ''}">
+    return `<section class="tgroup${opts.cls ? ' ' + opts.cls : ''}" data-key="${esc(title)}">
       <h3 class="tgroup-head">${head}</h3>
       ${opts.collapsed ? '' : `<ul class="tlist">${list.map((t) => taskRow(t, opts)).join('')}</ul>`}
     </section>`;
   }
 
-  function renderTaskList() {
+  function renderTaskList(before) {
     const el = $('#task-list');
     if (!el) return;
+    if (before === undefined) before = M.measure(el);
+    const key = `${ui.category}|${ui.filter}`;
+    const fresh = ui.listKey !== key || before === null;
+    ui.listKey = key;
+    const paint = (html) => {
+      el.innerHTML = html;
+      if (fresh) M.enter(el, '.banner, .filter-bar, .tgroup-head, .task, .empty', { max: 10, step: 18 });
+      else M.flip(el, before, { highlight: (id) => { const t = findTask(id); return !!t && Date.now() - Date.parse(t.createdAt || 0) < 4000; }, highlightColor: cssVar('--accent-soft') });
+    };
     const b = S.buckets(visibleTasks(), today());
     const doneAll = visibleTasks().filter((t) => t.done).sort((x, y) => (y.doneAt || '').localeCompare(x.doneAt || '')).slice(0, 50);
     const open = b.doing.length + b.overdue.length + b.today.length + b.upcoming.length + b.nodate.length;
@@ -1007,16 +1103,16 @@
       html += `<div class="banner">${icon('cloud')}<div><strong>พบเซิร์ฟเวอร์ X10</strong><span>เชื่อมต่อเพื่อซิงก์ข้อมูลและให้แอปอื่นส่งงานเข้ามาได้</span></div><button type="button" class="btn small primary" data-action="connect-server">เชื่อมต่อ</button></div>`;
     }
     if (state.tasks.some((t) => t.sample) && !ui.filter) {
-      html += `<div class="banner soft">${icon('tasks')}<div><strong>รายการนี้เป็นงานตัวอย่าง</strong><span>ลองแตะวงกลมเพื่อทำเสร็จ หรือแตะงานเพื่อแก้ไข</span></div><button type="button" class="btn small ghost" data-action="clear-samples">ลบตัวอย่าง</button></div>`;
+      html += `<div class="banner soft">${icon('tasks')}<div><strong>รายการนี้เป็นงานตัวอย่าง</strong><span>แตะวงกลมหรือปัดงานไปทางขวาเพื่อทำเสร็จ ปัดซ้ายเพื่อเริ่มทำ แตะงานเพื่อดูรายละเอียด</span></div><button type="button" class="btn small ghost" data-action="clear-samples">ลบตัวอย่าง</button></div>`;
     }
     if (ui.filter) {
       const m = STATUS_META[ui.filter];
       const list = ui.filter === 'done' ? b.doneToday : b[ui.filter];
       html += `<div class="filter-bar ${m.cls}">${icon(m.icon)}<span>แสดงเฉพาะ <strong>${m.label}</strong> · ${list.length} งาน</span><button type="button" class="btn small ghost" data-action="filter" data-filter="">ดูทั้งหมด</button></div>`;
       html += list.length
-        ? `<section class="tgroup"><ul class="tlist">${sortTasks(list.slice()).map((t) => taskRow(t, { showDate: true })).join('')}</ul></section>`
+        ? `<section class="tgroup" data-key="filter"><ul class="tlist">${sortTasks(list.slice()).map((t) => taskRow(t, { showDate: true })).join('')}</ul></section>`
         : `<div class="empty small">${icon('check', 'big')}<p class="empty-title">ไม่มีงานในสถานะนี้</p></div>`;
-      el.innerHTML = html;
+      paint(html);
       return;
     }
     if (!open && !doneAll.length) {
@@ -1032,7 +1128,7 @@
     html += group('เร็ว ๆ นี้', b.upcoming, { icon: 'calendar', showDate: true });
     html += group('ไม่มีกำหนด', b.nodate, { icon: 'tasks' });
     html += group('เสร็จแล้ว', doneAll, { cls: 'finished', toggle: true, collapsed: !state.settings.showDone, showDate: true });
-    el.innerHTML = html;
+    paint(html);
   }
 
   function dayTimeline(list) {
@@ -1152,7 +1248,7 @@
             <span class="date-num">${d.getDate()}</span>
             <span class="date-text"><span class="date-wd">${F_WEEKDAY.format(d)}</span><span class="date-my">${F_MONTH_YEAR.format(d)}</span></span>
           </div>
-          <div class="ring-wrap">${progressRing(doneToday, dueToday.length)}<span class="ring-cap">เสร็จวันนี้</span></div>
+          <div class="ring-wrap">${progressRing(doneToday, dueToday.length)}<span class="ring-cap">${dueToday.length && doneToday === dueToday.length ? 'ครบแล้ววันนี้' : 'เสร็จวันนี้'}</span></div>
         </div>
         ${dayTimeline(scoped)}
       </section>
@@ -1905,6 +2001,14 @@
         <p class="hint">สีนี้ใช้กับการ์ดวันนี้ ปุ่ม แถบเมนู และวิดเจ็ตบนหน้าจอโฮม (Android 12 ขึ้นไป) ส่วนสีสถานะงาน เช่น เลยกำหนด และกำลังทำ คงเดิมเพื่อให้อ่านง่าย</p>
       </section>
       <section class="panel">
+        <h2>การเคลื่อนไหว</h2>
+        <label class="switch-row"><span><strong>การเคลื่อนไหว</strong><span>เคลื่อนไหวสั้น ๆ ตอนทำเสร็จ ย้ายงาน และเปิดปิดหน้าต่าง</span></span>
+          <input type="checkbox" class="switch" data-action="set-motion"${state.settings.motion !== false ? ' checked' : ''}></label>
+        <label class="switch-row"><span><strong>สั่นเบา ๆ เมื่อแตะ</strong><span>ตอนติ๊กเสร็จและปัดงาน</span></span>
+          <input type="checkbox" class="switch" data-action="set-haptics"${state.settings.haptics !== false ? ' checked' : ''}></label>
+        <p class="hint">ปัดงานไปทางขวา = ทำเสร็จ · ปัดไปทางซ้าย = เริ่มทำ / พักไว้${matchMedia('(prefers-reduced-motion: reduce)').matches ? ' · มือถือตั้งค่าลดการเคลื่อนไหวไว้ แอปจึงไม่แสดงแอนิเมชัน' : ''}</p>
+      </section>
+      <section class="panel">
         <h2>การแจ้งเตือน</h2>
         <p class="muted">${perm === 'granted' ? (NATIVE ? 'เปิดแล้ว มือถือจะเตือนตามเวลาที่ตั้งไว้ แม้ปิดแอปอยู่' : 'เปิดแล้ว แอปจะเตือนตามเวลาที่ตั้งไว้ในแต่ละงาน') : perm === 'denied' ? (NATIVE ? 'ถูกปิดไว้ เปิดได้ที่ การตั้งค่า → แอป → X10 Tasks → การแจ้งเตือน' : 'ถูกปิดไว้ในการตั้งค่าเบราว์เซอร์ เปิดได้ที่การตั้งค่าเว็บไซต์ของเบราว์เซอร์') : perm === 'unsupported' ? 'อุปกรณ์นี้ไม่รองรับการแจ้งเตือน แอปจะแสดงข้อความเตือนในหน้าจอแทน' : 'อนุญาตให้แอปแจ้งเตือนเมื่อถึงเวลาทำงาน'}</p>
         ${perm === 'default' ? `<button type="button" class="btn primary" data-action="enable-notify">${icon('bell')} เปิดการแจ้งเตือน</button>` : ''}
@@ -1973,7 +2077,7 @@
       const cur = x === info.current;
       const state = x.done ? 'is-done' : cur ? 'is-cur' : 'is-todo';
       const when = x.done ? `<span class="sx-time">${icon('check')}${esc(doneAtLabel(x.doneAt))}</span>` : cur ? `<span class="sx-tag">${st === 'doing' ? 'กำลังทำขั้นนี้' : 'ขั้นถัดไป'}</span>` : '<span class="sx-wait">รอ</span>';
-      return `<li class="sx ${state}">
+      return `<li class="sx ${state}${ui.justStep === x.id ? ' just-done' : ''}">
         <button type="button" class="sx-dot" data-action="${x.done ? 'uncomplete-step' : 'complete-step'}" data-id="${esc(t.id)}" data-step="${esc(x.id)}" aria-label="${x.done ? 'ยกเลิกขั้นที่' : 'ทำเสร็จขั้นที่'} ${i + 1}: ${esc(x.title)}">${x.done ? icon('check') : `<span>${i + 1}</span>`}</button>
         <div class="sx-body">
           <div class="sx-head"><span class="sx-title">${esc(x.title)}</span>${when}</div>
@@ -2516,9 +2620,13 @@
   function render() {
     applyTheme();
     const view = $('#view');
+    const same = view.dataset.view === ui.view && ui.view === 'tasks';
+    const before = same ? M.measure($('#task-list')) : null;
+    const hero = same ? heroNumbers() : null;
     view.innerHTML = VIEWS[ui.view]();
     view.dataset.view = ui.view;
-    if (ui.view === 'tasks') renderTaskList();
+    if (ui.view === 'tasks') renderTaskList(before);
+    if (hero) animateHero(hero);
     const activeTab = ui.view === 'apps' ? 'options' : ui.view;
     $('#tabbar').innerHTML = TABS.map((tab) => tab
       ? `<button type="button" class="tab${activeTab === tab[0] ? ' on' : ''}" data-action="go" data-view="${tab[0]}" ${activeTab === tab[0] ? 'aria-current="page"' : ''}>${icon(tab[1])}<span>${tab[2]}</span></button>`
@@ -2544,7 +2652,10 @@
       }
     }
     render();
-    if (changedView) window.scrollTo(0, 0);
+    if (changedView) {
+      window.scrollTo(0, 0);
+      M.enter($('#view'), view === 'tasks' ? ':scope > :not(#task-list)' : ':scope > *', { max: 6, step: 24, dist: 6 });
+    }
     if (view === 'connect' || view === 'apps') loadRemote();
   }
 
@@ -2564,7 +2675,11 @@
       const step = t && (t.subtasks || []).find((x) => x.id === el.dataset.step);
       if (!step) return;
       const before = S.statusOf(t);
+      haptic('tick');
+      ui.justStep = step.id;
+      ui.cheerAt = Date.now();
       const r = completeTaskStep(t.id, step.id);
+      setTimeout(() => (ui.justStep = null), 700);
       if (r === 'finished') toast('ครบทุกขั้นตอน งานเสร็จแล้ว', { action: 'เลิกทำ', onAction: () => { setTaskStatus(t.id, before); uncompleteTaskStep(t.id, step.id); } });
       else if (r) {
         const info = S.stepInfo(findTask(t.id));
@@ -2572,20 +2687,7 @@
       }
     },
     'uncomplete-step': (el) => uncompleteTaskStep(el.dataset.id, el.dataset.step),
-    toggle: (el) => {
-      const id = el.dataset.id;
-      const t = findTask(id);
-      if (!t) return;
-      const before = S.statusOf(t);
-      const row = el.closest('.task, .next');
-      if (row) row.classList.add(t.done ? 'unchecking' : 'checking');
-      setTimeout(() => {
-        const r = setTaskDone(id, !t.done);
-        if (r && r.task.done) {
-          toast(r.spawn ? `เสร็จแล้ว · ครั้งถัดไป ${dueLabel(r.spawn.due)}` : 'เสร็จแล้ว', { action: 'เลิกทำ', onAction: () => setTaskStatus(id, before) });
-        }
-      }, 260);
-    },
+    toggle: (el) => tickTask(el.dataset.id, el),
     start: (el) => {
       setTaskStatus(el.dataset.id, 'doing');
       toast('เริ่มทำแล้ว');
@@ -2673,11 +2775,25 @@
         toast(e.message);
       }
     },
-    accent: (el) => setAccent(el.dataset.accent),
+    accent: (el) => {
+      fadeColors();
+      setAccent(el.dataset.accent);
+    },
     theme: (el) => {
+      fadeColors();
       state.settings.theme = el.dataset.theme;
       save();
       render();
+    },
+    'set-motion': (el) => {
+      state.settings.motion = el.checked;
+      M.setEnabled(el.checked);
+      save();
+    },
+    'set-haptics': (el) => {
+      state.settings.haptics = el.checked;
+      save();
+      if (el.checked) haptic('success');
     },
     'enable-notify': async () => {
       if (NATIVE) {
@@ -3042,6 +3158,29 @@
       return false;
     },
   };
+  M.setEnabled(state.settings.motion !== false);
+  M.sheetDrag($('#sheet-root'), () => closeSheet());
+  M.swipeRows({
+    selector: '.tlist .task',
+    action: (row, dir) => {
+      const t = findTask(row.dataset.id);
+      if (!t) return null;
+      if (dir === 'right') return t.done ? { cls: 'sw-todo', html: `${icon('refresh')}เปิดอีกครั้ง` } : { cls: 'sw-done', html: `${icon('check')}เสร็จ`, fly: true };
+      if (t.done) return null;
+      return S.statusOf(t) === 'doing' ? { cls: 'sw-todo', html: `พักไว้${icon('clock')}` } : { cls: 'sw-doing', html: `เริ่มทำ${icon('play')}` };
+    },
+    onArm: () => haptic('tick'),
+    onSwipe: (row, dir) => {
+      const t = findTask(row.dataset.id);
+      if (!t) return;
+      if (dir === 'right') return tickTask(t.id, row.querySelector('.check'), { delay: 0 });
+      const before = S.statusOf(t);
+      const next = before === 'doing' ? 'todo' : 'doing';
+      haptic('success');
+      setTaskStatus(t.id, next);
+      toast(next === 'doing' ? 'เริ่มทำแล้ว' : 'พักไว้ก่อน กลับไปรอทำ', { action: 'เลิกทำ', onAction: () => setTaskStatus(t.id, before) });
+    },
+  });
   seed();
   ui.view = VIEWS[(location.hash || '').slice(1)] ? location.hash.slice(1) : 'tasks';
   render();
