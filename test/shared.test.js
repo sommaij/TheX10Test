@@ -184,3 +184,24 @@ test('widget payload carries steps', () => {
   const w = S.widgetPayload([t], S.DEFAULT_CATEGORIES, ctx);
   assert.deepEqual(w.tasks[0].steps.map((x) => [x.title, x.done]), [['a', true], ['b', false]]);
 });
+
+test('theme colours stay readable for any chosen colour', () => {
+  for (const hex of ['#0a7a70', '#ffe600', '#f5f5f5', '#000000', '#7a3fb8', '#d2541f']) {
+    const t = S.accentTheme(hex);
+    assert.ok(S.contrast(t.light.accent, '#ffffff') >= 4.5, `light accent for ${hex}`);
+    assert.ok(S.contrast(t.dark.accent, '#151d1b') >= 6, `dark accent for ${hex}`);
+    assert.ok(S.contrast(t.dark.accent, t.dark.accentInk) >= 4.5, `text on dark accent for ${hex}`);
+    assert.match(t.light.accentSoft, /^#[0-9a-f]{6}$/);
+  }
+  assert.equal(S.accentTheme('not a colour').light.accent, S.accentTheme('#0a7a70').light.accent);
+});
+
+test('custom category colours reach the widget payload', () => {
+  const cats = [{ id: 'x', name: 'สปา', color: '#FF7F50' }];
+  const t = S.createTask({ title: 'นวด', category: 'x', due: '2026-10-31' }, ctx);
+  const w = S.widgetPayload([t], cats, ctx, '#1f5fbf');
+  assert.equal(w.tasks[0].color, '#ff7f50');
+  assert.ok(w.theme.light.accent && w.theme.dark.accent);
+  assert.equal(S.categoryHex('blue'), S.COLOR_HEX.blue);
+  assert.ok(S.validColor('#123abc') && S.validColor('rose') && !S.validColor('red'));
+});

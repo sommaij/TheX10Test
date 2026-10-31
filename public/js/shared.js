@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const STATUSES = ['todo', 'doing', 'done'];
   const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
   const COLORS = ['blue', 'green', 'amber', 'rose', 'violet', 'slate'];
@@ -487,6 +487,74 @@
     return { items: ok, errors, total: items.length };
   }
 
+  // ---------- colours ----------
+  const HEX_RE = /^#[0-9a-f]{6}$/i;
+  // App colour choices. "lagoon" is the stylesheet's own palette.
+  const ACCENTS = [
+    { id: 'lagoon', name: 'ลากูน', hex: '#0a7a70' },
+    { id: 'ocean', name: 'ทะเลลึก', hex: '#1f5fbf' },
+    { id: 'orchid', name: 'กล้วยไม้', hex: '#7a3fb8' },
+    { id: 'rose', name: 'กุหลาบ', hex: '#c23b6c' },
+    { id: 'sunset', name: 'อาทิตย์ตก', hex: '#d2541f' },
+    { id: 'sand', name: 'ทองทราย', hex: '#a86f00' },
+    { id: 'forest', name: 'ป่าเขียว', hex: '#2f7d32' },
+    { id: 'graphite', name: 'กราไฟต์', hex: '#37474f' },
+  ];
+  function rgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function toHex(c) {
+    return '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  }
+  /** a blended toward b by t (0..1) */
+  function mix(a, b, t) {
+    const x = rgb(a);
+    const y = rgb(b);
+    return toHex(x.map((v, i) => v + (y[i] - v) * t));
+  }
+  function luminance(hex) {
+    const [r, g, b] = rgb(hex).map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  function contrast(a, b) {
+    const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m);
+    return (x + 0.05) / (y + 0.05);
+  }
+  /**
+   * Turns one chosen colour into the app's accent tokens for light and dark themes,
+   * adjusting lightness so text on and around it stays readable.
+   */
+  function accentTheme(hex) {
+    if (!HEX_RE.test(hex || '')) hex = ACCENTS[0].hex;
+    hex = hex.toLowerCase();
+    let accent = hex;
+    for (let i = 0; i < 12 && contrast(accent, '#ffffff') < 4.5; i++) accent = mix(accent, '#000000', 0.1);
+    let dark = mix(hex, '#ffffff', 0.2);
+    for (let i = 0; i < 12 && contrast(dark, '#151d1b') < 6; i++) dark = mix(dark, '#ffffff', 0.12);
+    for (let i = 0; i < 12 && contrast(dark, '#151d1b') > 12; i++) dark = mix(dark, '#000000', 0.08);
+    return {
+      light: {
+        accent, accentInk: '#ffffff', accentSoft: mix(accent, '#ffffff', 0.84),
+        hero1: mix(accent, '#ffffff', 0.1), hero2: accent, hero3: mix(accent, '#000000', 0.25),
+      },
+      dark: {
+        accent: dark, accentInk: mix(hex, '#000000', 0.82), accentSoft: mix(hex, '#151d1b', 0.76),
+        hero1: mix(hex, '#000000', 0.32), hero2: mix(hex, '#000000', 0.48), hero3: mix(hex, '#000000', 0.6),
+      },
+    };
+  }
+  /** A category's colour as hex: a named palette colour or a custom #rrggbb. */
+  function categoryHex(color) {
+    return HEX_RE.test(color || '') ? color.toLowerCase() : COLOR_HEX[color] || COLOR_HEX.slate;
+  }
+  function validColor(color) {
+    return COLORS.includes(color) || HEX_RE.test(color || '');
+  }
+
   // ---------- at-a-glance status (app board, Android widgets, /api/v1/widget) ----------
   function compareTasks(a, b) {
     return (a.due || '9999').localeCompare(b.due || '9999') ||
@@ -516,7 +584,7 @@
     return b.doing[0] || b.overdue[0] || b.today.find((t) => t.time) || b.today[0] || null;
   }
   /** Compact data for home-screen widgets. Dates are recomputed on the phone, so it stays right after midnight. */
-  function widgetPayload(tasks, categories, ctx) {
+  function widgetPayload(tasks, categories, ctx, accentHex) {
     const cats = new Map((categories || []).map((c) => [c.id, c]));
     const horizon = addDays(ctx.today, 14);
     const yesterday = addDays(ctx.today, -1);
@@ -529,6 +597,7 @@
     }
     return {
       v: 1,
+      theme: accentTheme(accentHex),
       generatedAt: ctx.now || new Date().toISOString(),
       today: ctx.today,
       openCount: tasks.filter((t) => !t.done).length,
@@ -544,7 +613,7 @@
           status: statusOf(t),
           priority: t.priority || 0,
           category: c ? c.name : '',
-          color: COLOR_HEX[c ? c.color : 'slate'] || COLOR_HEX.slate,
+          color: categoryHex(c ? c.color : 'slate'),
           subtasks: subs.length ? `${subs.filter((x) => x.done).length}/${subs.length}` : '',
           steps: subs.slice(0, 12).map((x) => ({ id: x.id, title: x.title, done: !!x.done })),
         };
@@ -625,6 +694,7 @@
     VERSION, REPEATS, COLORS, COLOR_HEX, STATUSES, EVENTS, DEFAULT_CATEGORIES, ALIASES, PRESETS,
     ValidationError, uid, randomHex, pad, parseStatus, statusOf, compareTasks, buckets, nextUp, widgetPayload,
     stepInfo, completeStep, STEP_TEMPLATES,
+    ACCENTS, mix, contrast, accentTheme, categoryHex, validColor,
     partsInZone, todayIn, addDays, addMonths, weekday, isValidDate,
     parseWhen, parseTime, parseReminder, parseRepeat, parsePriority, parseDone, parseSubtasks,
     resolveCategory, normalizeFields, createTask, patchTask, nextDue, setDone,

@@ -177,7 +177,7 @@ class Store extends EventEmitter {
   // ---------- categories ----------
   addCategory({ name, color }) {
     if (!name || !String(name).trim()) throw new S.ValidationError('name is required', 'name');
-    const c = { id: S.uid('c_'), name: String(name).trim().slice(0, 40), color: S.COLORS.includes(color) ? color : 'slate' };
+    const c = { id: S.uid('c_'), name: String(name).trim().slice(0, 40), color: S.validColor(color) ? color : 'slate' };
     this.db.categories.push(c);
     this._categoriesChanged();
     return c;
@@ -186,7 +186,7 @@ class Store extends EventEmitter {
     const c = this.db.categories.find((x) => x.id === id);
     if (!c) return null;
     if (name !== undefined && String(name).trim()) c.name = String(name).trim().slice(0, 40);
-    if (color !== undefined && S.COLORS.includes(color)) c.color = color;
+    if (color !== undefined && S.validColor(color)) c.color = color;
     this._categoriesChanged();
     return c;
   }

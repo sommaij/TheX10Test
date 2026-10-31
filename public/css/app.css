@@ -897,3 +897,32 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .step-bar.st-todo i.is-cur { background: color-mix(in srgb, var(--accent) 45%, var(--surface-2)); }
 .stepper.st-todo .sx.is-cur .sx-dot { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
 .stepper.st-todo .sx-tag { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------- colour pickers ---------- */
+.hero { box-shadow: 0 12px 30px -10px color-mix(in srgb, var(--hero-2) 60%, transparent); }
+.fab { box-shadow: 0 10px 22px -6px color-mix(in srgb, var(--accent) 65%, transparent); }
+.accents { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 10px 4px; }
+.accent-pick {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  border: 0; background: none; padding: 0; cursor: pointer; min-width: 0;
+}
+.accent-dot {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--sw); color: #ffffff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+.accent-dot .i { width: 20px; height: 20px; stroke-width: 2.6; opacity: 0; }
+.accent-pick.on .accent-dot { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--sw); }
+.accent-pick.on .accent-dot .i { opacity: 1; }
+.accent-name { font-size: 11.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.accent-pick.on .accent-name { color: var(--ink); }
+.accent-pick.custom .accent-dot {
+  background: conic-gradient(from 0deg, #e5533d, #f2b134, #3fae6a, #2f8fd8, #7a3fb8, #e5533d);
+}
+.accent-pick.custom.on .accent-dot { background: var(--sw); }
+.accent-pick.custom:not(.on) .accent-dot .i { opacity: 1; color: #ffffff; }
+.accent-pick input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.accent-pick:focus-within .accent-dot, .accent-pick:focus-visible .accent-dot { outline: 2px solid var(--accent); outline-offset: 4px; }
+.swatch.custom span { display: grid; place-items: center; background: conic-gradient(from 0deg, #e5533d, #f2b134, #3fae6a, #2f8fd8, #7a3fb8, #e5533d); color: #ffffff; }
+.swatch.custom input:checked + span { background: var(--cat); }
+.swatch.custom span .i { width: 18px; height: 18px; }
+.swatch.custom input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }

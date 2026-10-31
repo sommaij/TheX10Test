@@ -69,6 +69,7 @@
     right: '<path d="M9 5l7 7-7 7"/>',
     down: '<path d="M6 9l6 6 6-6"/>',
     up: '<path d="M6 15l6-6 6 6"/>',
+    palette: '<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.8 0-.9.7-1.5 1.7-1.5h2.2a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.6" cy="11" r="1.1"/><circle cx="10" cy="7.3" r="1.1"/><circle cx="14.5" cy="7.3" r="1.1"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     copy: '<rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v9A1.5 1.5 0 0 0 5 15.5h3.5"/>',
@@ -97,7 +98,7 @@
       connectors: [],
       outbox: [],
       notified: {},
-      settings: { theme: 'system', server: null, seeded: false, showDone: false, notify: false },
+      settings: { theme: 'system', accent: 'lagoon', server: null, seeded: false, showDone: false, notify: false },
     };
   }
   function load() {
@@ -154,7 +155,9 @@
   }
   const findTask = (id) => state.tasks.find((t) => t.id === id) || null;
   const catOf = (id) => state.categories.find((c) => c.id === id) || null;
-  const catColor = (id) => `var(--c-${(catOf(id) || { color: 'slate' }).color})`;
+  // A category colour for CSS: palette names follow light/dark mode, custom #hex colours are used as chosen.
+  const colorVar = (color) => (/^#[0-9a-f]{6}$/i.test(color || '') ? color : `var(--c-${color || 'slate'})`);
+  const catColor = (id) => colorVar((catOf(id) || { color: 'slate' }).color);
 
   // ---------- seed examples on first run ----------
   function seed() {
@@ -317,7 +320,7 @@
       clearTimeout(this.timer);
       this.timer = setTimeout(() => {
         try {
-          NATIVE.updateWidgets(JSON.stringify(S.widgetPayload(state.tasks, state.categories, ctx())));
+          NATIVE.updateWidgets(JSON.stringify(S.widgetPayload(state.tasks, state.categories, ctx(), accentHex())));
           NATIVE.scheduleReminders(JSON.stringify(Reminders.upcoming()));
         } catch (e) {
           /* bridge unavailable */
@@ -711,7 +714,40 @@
     <button type="button" class="icon-btn small" data-action="copy" data-text="${esc(text)}" aria-label="${esc(label)}">${icon('copy')}</button></div>`;
 
   // ---------- theme ----------
+  function accentHex() {
+    const a = state.settings.accent || 'lagoon';
+    if (/^#[0-9a-f]{6}$/i.test(a)) return a.toLowerCase();
+    return (S.ACCENTS.find((x) => x.id === a) || S.ACCENTS[0]).hex;
+  }
+  // The chosen app colour, as token overrides for light and dark mode. Lagoon is the stylesheet's own palette.
+  function applyAccent() {
+    let el = document.getElementById('accent-style');
+    if ((state.settings.accent || 'lagoon') === 'lagoon') {
+      if (el) el.remove();
+      return;
+    }
+    const t = S.accentTheme(accentHex());
+    const vars = (x) => `--accent:${x.accent};--accent-ink:${x.accentInk};--accent-soft:${x.accentSoft};--hero-1:${x.hero1};--hero-2:${x.hero2};--hero-3:${x.hero3};`;
+    const css = `:root{${vars(t.light)}}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){${vars(t.dark)}}}
+:root[data-theme="dark"]{${vars(t.dark)}}`;
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'accent-style';
+      document.body.appendChild(el); // last in the page, so it wins over the stylesheet wherever that is
+    }
+    if (el.textContent !== css) el.textContent = css;
+  }
+  function setAccent(value) {
+    state.settings.accent = value;
+    save();
+    applyAccent();
+    render();
+    Native.push();
+  }
+
   function applyTheme() {
+    applyAccent();
     const t = state.settings.theme;
     if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     else if (!DEMO) document.documentElement.removeAttribute('data-theme');
@@ -960,7 +996,7 @@
     const doneToday = dueToday.filter((t) => t.done).length;
     const chips = [{ id: 'all', name: 'ทั้งหมด' }].concat(state.categories).map((c) => {
       const n = c.id === 'all' ? state.tasks.filter((t) => !t.done).length : state.tasks.filter((t) => !t.done && t.category === c.id).length;
-      return `<button type="button" class="chip${ui.category === c.id ? ' on' : ''}" data-action="cat" data-cat="${esc(c.id)}" style="--cat:${c.id === 'all' ? 'var(--accent)' : `var(--c-${c.color})`}" aria-pressed="${ui.category === c.id}">${c.id === 'all' ? '' : '<i class="dot"></i>'}${esc(c.name)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
+      return `<button type="button" class="chip${ui.category === c.id ? ' on' : ''}" data-action="cat" data-cat="${esc(c.id)}" style="--cat:${c.id === 'all' ? 'var(--accent)' : colorVar(c.color)}" aria-pressed="${ui.category === c.id}">${c.id === 'all' ? '' : '<i class="dot"></i>'}${esc(c.name)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
     }).join('');
     return `
       <header class="topbar">
@@ -1284,6 +1320,15 @@
       <section class="panel">
         <h2>หน้าตา</h2>
         <div class="segmented" role="radiogroup" aria-label="ธีม">${themes.map(([v, l]) => `<button type="button" role="radio" aria-checked="${state.settings.theme === v}" class="${state.settings.theme === v ? 'on' : ''}" data-action="theme" data-theme="${v}">${l}</button>`).join('')}</div>
+        <p class="field-label">${icon('palette')} สีของแอปและวิดเจ็ต</p>
+        <div class="accents" role="radiogroup" aria-label="สีของแอป">
+          ${S.ACCENTS.map((a) => `<button type="button" role="radio" class="accent-pick${(state.settings.accent || 'lagoon') === a.id ? ' on' : ''}" aria-checked="${(state.settings.accent || 'lagoon') === a.id}" data-action="accent" data-accent="${a.id}" style="--sw:${a.hex}"><span class="accent-dot">${icon('check')}</span><span class="accent-name">${esc(a.name)}</span></button>`).join('')}
+          <label class="accent-pick custom${/^#/.test(state.settings.accent || '') ? ' on' : ''}" style="--sw:${/^#/.test(state.settings.accent || '') ? state.settings.accent : 'transparent'}">
+            <span class="accent-dot">${/^#/.test(state.settings.accent || '') ? icon('check') : icon('palette')}</span><span class="accent-name">เลือกเอง</span>
+            <input type="color" id="accent-custom" value="${accentHex()}" aria-label="เลือกสีของแอปเอง">
+          </label>
+        </div>
+        <p class="hint">สีนี้ใช้กับการ์ดวันนี้ ปุ่ม แถบเมนู และวิดเจ็ตบนหน้าจอโฮม (Android 12 ขึ้นไป) ส่วนสีสถานะงาน เช่น เลยกำหนด และกำลังทำ คงเดิมเพื่อให้อ่านง่าย</p>
       </section>
       <section class="panel">
         <h2>การแจ้งเตือน</h2>
@@ -1295,7 +1340,7 @@
         <h2>หมวดหมู่</h2>
         <ul class="rows">${state.categories.map((c) => `
           <li class="row-item">
-            <span class="cat-dot" style="--cat:var(--c-${c.color})"></span>
+            <span class="cat-dot" style="--cat:${colorVar(c.color)}"></span>
             <div class="row-main"><strong>${esc(c.name)}</strong><span class="row-sub">${state.tasks.filter((t) => t.category === c.id && !t.done).length} งานค้าง</span></div>
             <div class="row-actions"><button type="button" class="icon-btn small" data-action="edit-category" data-id="${esc(c.id)}" aria-label="แก้ไข ${esc(c.name)}">${icon('edit')}</button></div>
           </li>`).join('')}</ul>
@@ -1373,7 +1418,7 @@
         <div class="dt-tags">
           <span class="dt-status st-${st}">${icon(st === 'done' ? 'check' : st === 'doing' ? 'play' : 'clock')}${STATUS_LABEL[st]}</span>
           ${late ? `<span class="dt-status st-overdue">${icon('alert')}เลยกำหนด</span>` : ''}
-          ${cat ? `<span class="cat-tag" style="--cat:var(--c-${cat.color})"><i></i>${esc(cat.name)}</span>` : ''}
+          ${cat ? `<span class="cat-tag" style="--cat:${colorVar(cat.color)}"><i></i>${esc(cat.name)}</span>` : ''}
         </div>
         <button type="button" class="icon-btn" data-action="edit-task" data-id="${esc(t.id)}" aria-label="แก้ไขงาน">${icon('edit')}</button>
         <button type="button" class="icon-btn" data-action="close-sheet" aria-label="ปิด">${icon('x')}</button>
@@ -1457,7 +1502,7 @@
           <span class="field-label">หมวดหมู่</span>
           <div class="cat-pick" role="radiogroup" aria-label="หมวดหมู่">
             <label class="cat-opt" style="--cat:var(--ink-3)"><input type="radio" name="cat" value=""${!t.category ? ' checked' : ''}><span>ไม่มี</span></label>
-            ${state.categories.map((c) => `<label class="cat-opt" style="--cat:var(--c-${c.color})"><input type="radio" name="cat" value="${esc(c.id)}"${t.category === c.id ? ' checked' : ''}><span><i class="dot"></i>${esc(c.name)}</span></label>`).join('')}
+            ${state.categories.map((c) => `<label class="cat-opt" style="--cat:${colorVar(c.color)}"><input type="radio" name="cat" value="${esc(c.id)}"${t.category === c.id ? ' checked' : ''}><span><i class="dot"></i>${esc(c.name)}</span></label>`).join('')}
           </div>
         </div>
 
@@ -1601,7 +1646,8 @@
       <form class="editor" id="cat-form" novalidate>
         <label class="field"><span class="field-label">ชื่อหมวดหมู่</span><input type="text" id="c-name" maxlength="40" value="${esc(c ? c.name : '')}" placeholder="เช่น ฝ่ายแม่บ้าน, ช้อปปิ้ง" autofocus></label>
         <div class="field"><span class="field-label">สี</span><div class="swatches" role="radiogroup" aria-label="สี">
-          ${S.COLORS.map((k) => `<label class="swatch" style="--cat:var(--c-${k})"><input type="radio" name="color" value="${k}"${k === color ? ' checked' : ''} aria-label="${k}"><span></span></label>`).join('')}</div></div>
+          ${S.COLORS.map((k) => `<label class="swatch" style="--cat:var(--c-${k})"><input type="radio" name="color" value="${k}"${k === color ? ' checked' : ''} aria-label="${k}"><span></span></label>`).join('')}
+          <label class="swatch custom" style="--cat:${/^#/.test(color) ? color : 'transparent'}" title="เลือกสีเอง"><input type="radio" name="color" value="custom"${/^#/.test(color) ? ' checked' : ''} aria-label="เลือกสีเอง"><span>${icon('palette')}</span><input type="color" id="c-custom" value="${/^#/.test(color) ? color : '#ff7f50'}" aria-label="สีที่เลือกเอง"></label></div></div>
         <footer class="sheet-foot">
           ${c ? `<button type="button" class="btn ghost danger-text" data-action="delete-category" data-id="${esc(c.id)}">${icon('trash')} ลบ</button>` : '<span></span>'}
           <button type="submit" class="btn primary">บันทึก</button>
@@ -1609,10 +1655,17 @@
       </form>`;
     openSheet(html, {
       label: 'หมวดหมู่',
-      onMount: (sheet) => $('#cat-form', sheet).addEventListener('submit', async (e) => {
+      onMount: (sheet) => {
+        const custom = $('#c-custom', sheet);
+        custom.addEventListener('input', () => {
+          $('input[name="color"][value="custom"]', sheet).checked = true;
+          custom.closest('.swatch').style.setProperty('--cat', custom.value);
+        });
+        $('#cat-form', sheet).addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = $('#c-name', sheet).value.trim();
-        const col = $('input[name="color"]:checked', sheet).value;
+        let col = $('input[name="color"]:checked', sheet).value;
+        if (col === 'custom') col = $('#c-custom', sheet).value.toLowerCase();
         if (!name) return $('#c-name', sheet).focus();
         try {
           if (Sync.on) {
@@ -1629,7 +1682,8 @@
         } catch (err) {
           toast(err.message);
         }
-      }),
+        });
+      },
     });
   }
 
@@ -2012,6 +2066,7 @@
         toast(e.message);
       }
     },
+    accent: (el) => setAccent(el.dataset.accent),
     theme: (el) => {
       state.settings.theme = el.dataset.theme;
       save();
@@ -2183,7 +2238,15 @@
     if (!$('#dialog-root').hidden) return;
     closeSheet();
   });
+  // Custom app colour: preview live while the picker is open, save when it closes.
+  document.addEventListener('input', (e) => {
+    if (e.target.id !== 'accent-custom') return;
+    state.settings.accent = e.target.value.toLowerCase();
+    applyAccent();
+    e.target.closest('.accent-pick').style.setProperty('--sw', e.target.value);
+  });
   document.addEventListener('change', async (e) => {
+    if (e.target.id === 'accent-custom') return setAccent(e.target.value.toLowerCase());
     if (e.target.id !== 'import-file' || !e.target.files[0]) return;
     try {
       const data = JSON.parse(await e.target.files[0].text());

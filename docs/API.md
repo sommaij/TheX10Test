@@ -138,6 +138,7 @@ curl -X POST https://your-server/api/v1/tasks/t_3f9a1c0b2d4e5f60/steps/s_9a8b7c6
 ```json
 {
   "v": 1,
+  "theme": { "light": { "accent": "#0a7a70", "accentInk": "#ffffff", "accentSoft": "#d9edeb", "…": "…" }, "dark": { "…": "…" } },
   "today": "2026-10-31",
   "openCount": 7,
   "doneDays": { "2026-10-31": 1 },
@@ -149,14 +150,14 @@ curl -X POST https://your-server/api/v1/tasks/t_3f9a1c0b2d4e5f60/steps/s_9a8b7c6
 }
 ```
 
-`tasks` คืองานที่ยังไม่เสร็จภายใน 14 วันข้างหน้า งานที่กำลังทำ และงานที่ไม่มีกำหนด (สูงสุด 60 งาน) ส่วน `doneDays` คือจำนวนงานที่เสร็จของเมื่อวานและวันนี้
+`theme` คือชุดสีของวิดเจ็ต (จากเซิร์ฟเวอร์จะเป็นสีเริ่มต้น แอป Android ใช้สีที่ผู้ใช้เลือกในมือถือเครื่องนั้นแทน) ส่วน `tasks` คืองานที่ยังไม่เสร็จภายใน 14 วันข้างหน้า งานที่กำลังทำ และงานที่ไม่มีกำหนด (สูงสุด 60 งาน) ส่วน `doneDays` คือจำนวนงานที่เสร็จของเมื่อวานและวันนี้
 
 ## หมวดหมู่
 
 | | |
 |---|---|
 | `GET /categories` | `{ "categories": [{ "id": "work", "name": "งาน", "color": "blue" }] }` |
-| `POST /categories` (ผู้ดูแล) | `{ "name": "ฝ่ายช่าง", "color": "violet" }` สี: `blue` `green` `amber` `rose` `violet` `slate` |
+| `POST /categories` (ผู้ดูแล) | `{ "name": "ฝ่ายช่าง", "color": "violet" }` สี: `blue` `green` `amber` `rose` `violet` `slate` หรือสีเองแบบ `#rrggbb` |
 | `PATCH /categories/:id` · `DELETE /categories/:id` (ผู้ดูแล) | ลบแล้วงานในหมวดจะไม่มีหมวดหมู่ |
 
 ## คีย์สำหรับแอปอื่น (ผู้ดูแล)

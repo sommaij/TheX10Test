@@ -5,8 +5,11 @@ import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -39,10 +42,35 @@ final class Widgets {
         }
     }
 
+    /** {accent, ink on accent, soft} for the current light/dark mode, or null to keep the built-in colours. */
+    private static int[] accent(Context c, WidgetData d) {
+        boolean night = (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        return night ? d.accentDark : d.accentLight;
+    }
+
+    /** Tints a view's rounded background. Remote tinting needs Android 12; older phones keep the default colour. */
+    private static void tintBackground(RemoteViews v, int id, int color) {
+        if (Build.VERSION.SDK_INT >= 31) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(color));
+    }
+
+    private static void applyAccent(RemoteViews v, int[] a, int addButton) {
+        if (a == null || Build.VERSION.SDK_INT < 31) return;
+        tintBackground(v, addButton, a[0]);
+        v.setInt(addButton, "setColorFilter", a[1]);
+    }
+
     static RemoteViews summary(Context c, Bundle options) {
         String today = WidgetData.today();
-        WidgetData.Buckets b = WidgetData.load(c).buckets(today);
+        WidgetData data = WidgetData.load(c);
+        WidgetData.Buckets b = data.buckets(today);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_summary);
+        int[] a = accent(c, data);
+        if (a != null) {
+            v.setTextColor(R.id.brand, a[0]);
+            v.setTextColor(R.id.num_today, a[0]);
+            tintBackground(v, R.id.tile_today, a[2]);
+        }
+        applyAccent(v, a, R.id.btn_add);
 
         int dueToday = b.today.size() + b.doneToday;
         for (WidgetData.Task t : b.doing) if (today.equals(t.due)) dueToday++;
@@ -66,7 +94,7 @@ final class Widgets {
             String label = "doing".equals(next.status) ? "กำลังทำ" : "ถัดไป";
             if (next.time != null) label += " " + next.time;
             v.setTextViewText(R.id.next_label, label);
-            v.setTextColor(R.id.next_label, c.getColor("doing".equals(next.status) ? R.color.doing : R.color.accent));
+            v.setTextColor(R.id.next_label, "doing".equals(next.status) ? c.getColor(R.color.doing) : a != null ? a[0] : c.getColor(R.color.accent));
             v.setTextViewText(R.id.next_title, next.title);
             v.setOnClickPendingIntent(R.id.next_row, open(c, "task/" + Uri.encode(next.id)));
             WidgetData.Step step = next.currentStep();
@@ -105,8 +133,15 @@ final class Widgets {
 
     static RemoteViews list(Context c, Bundle options) {
         String today = WidgetData.today();
-        WidgetData.Buckets b = WidgetData.load(c).buckets(today);
+        WidgetData data = WidgetData.load(c);
+        WidgetData.Buckets b = data.buckets(today);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_list);
+        int[] a = accent(c, data);
+        if (a != null) {
+            v.setTextColor(R.id.count_today, a[0]);
+            tintBackground(v, R.id.count_today, a[2]);
+        }
+        applyAccent(v, a, R.id.btn_add);
         v.setTextViewText(R.id.count_overdue, "เลย " + b.overdue.size());
         v.setTextViewText(R.id.count_today, "วันนี้ " + b.today.size());
         v.setTextViewText(R.id.count_doing, "ทำอยู่ " + b.doing.size());

@@ -79,6 +79,8 @@ final class WidgetData {
 
     final List<Task> tasks = new ArrayList<>();
     JSONObject doneDays = new JSONObject();
+    /** The app colour chosen in Settings, as {accent, ink on accent, soft background}; null = built-in teal. */
+    int[] accentLight, accentDark;
 
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -123,6 +125,11 @@ final class WidgetData {
             }
             JSONObject dd = o.optJSONObject("doneDays");
             if (dd != null) d.doneDays = dd;
+            JSONObject theme = o.optJSONObject("theme");
+            if (theme != null) {
+                d.accentLight = accent(theme.optJSONObject("light"));
+                d.accentDark = accent(theme.optJSONObject("dark"));
+            }
         } catch (JSONException e) {
             // keep whatever parsed; a bad payload must never crash the launcher
         }
@@ -236,10 +243,15 @@ final class WidgetData {
         return finished;
     }
 
-    /** Server data replaces ours, except tasks the user just ticked here and the server has not seen yet. */
+    /**
+     * Server data replaces ours, except tasks the user just ticked here and the server has not seen yet.
+     * The colour is a setting on this phone, so it is kept.
+     */
     static synchronized void saveServerPayload(Context c, String json) {
         try {
             JSONObject o = new JSONObject(json);
+            JSONObject old = new JSONObject(prefs(c).getString("payload", "{}"));
+            if (old.has("theme")) o.put("theme", old.get("theme"));
             JSONArray pending = new JSONArray(prefs(c).getString("actions", "[]"));
             if (pending.length() > 0) {
                 List<String> ids = new ArrayList<>();
@@ -280,6 +292,14 @@ final class WidgetData {
     }
 
     // ---------- helpers ----------
+
+    private static int[] accent(JSONObject t) {
+        if (t == null) return null;
+        int a = parseColor(t.optString("accent"), 0);
+        int ink = parseColor(t.optString("accentInk"), 0);
+        int soft = parseColor(t.optString("accentSoft"), 0);
+        return a == 0 || ink == 0 || soft == 0 ? null : new int[] {a, ink, soft};
+    }
 
     private static String str(JSONObject j, String k) {
         return j.isNull(k) ? null : j.optString(k, null);
