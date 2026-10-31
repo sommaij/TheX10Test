@@ -1589,8 +1589,8 @@
       const url = URL.createObjectURL(blob);
       openSheet(`${sheetHead('ส่งออกข้อมูล', `${state.tasks.length} งาน`)}
         <div class="editor">
-          <a class="btn primary" href="${url}" download="x10-tasks-${today()}.json">${icon('download')} ดาวน์โหลดไฟล์</a>
-          <p class="hint">ถ้าดาวน์โหลดไม่ได้ คัดลอกข้อความด้านล่างไปเก็บไว้แทน</p>
+          ${DEMO ? '<p class="hint">หน้าตัวอย่างนี้ดาวน์โหลดไฟล์ไม่ได้ คัดลอกข้อความด้านล่างไปเก็บไว้แทน</p>' : `<a class="btn primary" href="${url}" download="x10-tasks-${today()}.json">${icon('download')} ดาวน์โหลดไฟล์</a>
+          <p class="hint">ถ้าดาวน์โหลดไม่ได้ คัดลอกข้อความด้านล่างไปเก็บไว้แทน</p>`}
           ${copyBox(data, { pre: true })}
         </div>`, { label: 'ส่งออกข้อมูล' });
     },
