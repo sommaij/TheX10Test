@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>X10 Tasks</title>
+<meta name="description" content="จัดการงานประจำวันบนมือถือ พร้อมแจ้งเตือน ปฏิทิน และเชื่อมต่อ API ของแอปอื่น">
+<meta name="theme-color" content="#eef3f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1110" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="X10 Tasks">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- FONTS:START -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Mitr:wght@400;500&display=swap">
+<!-- FONTS:END -->
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<!-- BODY:START -->
+<div id="app">
+  <main id="view"></main>
+</div>
+<nav class="tabbar" aria-label="เมนูหลัก"><div id="tabbar" class="tabbar-inner"></div></nav>
+<div id="sheet-root" hidden></div>
+<div id="dialog-root" hidden></div>
+<div id="toast-root"></div>
+<!-- BODY:END -->
+<script src="js/shared.js"></script>
+<script src="js/sheets-script.js"></script>
+<script src="js/motion.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

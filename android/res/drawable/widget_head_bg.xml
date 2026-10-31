@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback for the list widget header until the app paints its gradient (WidgetArt). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="315" android:startColor="#FF178B80" android:centerColor="#FF0A7A70" android:endColor="#FF075C54" />
+    <corners android:topLeftRadius="24dp" android:topRightRadius="24dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
+</shape>

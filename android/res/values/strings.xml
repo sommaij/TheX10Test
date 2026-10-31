@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">X10 Tasks</string>
+    <string name="widget_summary">สรุปงานวันนี้</string>
+    <string name="widget_list">รายการงาน</string>
+    <string name="tile_overdue">เลยกำหนด</string>
+    <string name="tile_today">วันนี้</string>
+    <string name="tile_doing">กำลังทำ</string>
+    <string name="tile_done">เสร็จแล้ว</string>
+    <string name="list_title">งานของวันนี้</string>
+    <string name="empty">ไม่มีงานค้าง เยี่ยมมาก</string>
+    <string name="channel_reminders">แจ้งเตือนงาน</string>
+    <string name="cd_add">เพิ่มงาน</string>
+    <string name="cd_refresh">รีเฟรช</string>
+    <string name="cd_done">ทำเสร็จ</string>
+</resources>
