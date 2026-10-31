@@ -276,3 +276,8 @@ test('write-back request: status change becomes the source app\'s PATCH', () => 
   conn.writeBack.status.done = '';
   assert.equal(S.writeBackRequest(conn, Object.assign({}, t, { done: true, status: 'done' })), null, 'empty = do not send');
 });
+
+test('writeBackRetryable: keep a status for later only when retrying can help', () => {
+  for (const s of [401, 403, 408, 429, 500, 502, 503]) assert.equal(S.writeBackRetryable(s), true, `retry ${s}`);
+  for (const s of [400, 404, 409, 422]) assert.equal(S.writeBackRetryable(s), false, `give up ${s}`);
+});

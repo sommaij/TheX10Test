@@ -981,6 +981,7 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 }
 .app-badge .i { width: 20px; height: 20px; }
 .ok-text { color: var(--ok); font-weight: 600; }
+.warn-text { font-style: normal; color: var(--warn); font-weight: 600; }
 .secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .secret-row input { font-family: var(--font-mono); font-size: 13.5px !important; }
 .discover { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }

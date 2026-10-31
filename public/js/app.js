@@ -99,6 +99,7 @@
       categories: S.DEFAULT_CATEGORIES.map((c) => Object.assign({}, c)),
       connectors: [],
       outbox: [],
+      pendingWrites: {},
       notified: {},
       settings: { theme: 'system', accent: 'lagoon', server: null, seeded: false, showDone: false, notify: false },
     };
@@ -235,33 +236,98 @@
     return next;
   }
   // A task that came from another app (e.g. TaskFlow): tell that app its new status.
-  // With the X10 server connected, the server does this instead.
+  // With the X10 server connected, the server does this instead. Without it the phone sends it over
+  // its own internet; with no signal the change waits in state.pendingWrites and goes out later.
   function writeBack(task) {
     if (Sync.on) return;
     const conn = state.connectors.find((c) => task.source === `connector:${c.id}`);
-    const req = S.writeBackRequest(conn, task);
-    if (!req) return;
-    const fail = (why) => {
-      conn.lastWriteError = `ส่งสถานะ “${task.title}” ไม่สำเร็จ: ${why}`;
-      save();
-      toast(`${conn.name} ยังไม่ได้รับสถานะใหม่: ${why}`);
-    };
-    httpFetch(req.url, { method: req.method, headers: req.headers, body: req.body })
-      .then((res) => {
-        if (!res.ok) return fail(`HTTP ${res.status}`);
-        conn.lastWriteError = null;
-        save();
-      })
-      .catch((e) => fail(e.message));
+    if (!S.writeBackRequest(conn, task)) return;
+    state.pendingWrites[task.id] = { conn: conn.id, at: nowISO(), tries: 0, nextAt: null, error: null };
+    save();
+    setTimeout(() => flushWrites({ force: true }), 0); // after the rest of this change (e.g. last step → done) is applied
+  }
+  const pendingCount = (connId) => Object.values(state.pendingWrites).filter((p) => !connId || p.conn === connId).length;
+
+  // Sends waiting statuses one by one. force: ignore the back-off (app opened, signal back, manual sync).
+  let flushing = null;
+  let flushAgain = false;
+  function flushWrites(opts = {}) {
+    if (Sync.on || !pendingCount()) return Promise.resolve();
+    if (flushing) {
+      if (opts.force) flushAgain = true;
+      return flushing;
+    }
+    flushing = sendWaiting(opts).finally(() => {
+      flushing = null;
+      if (flushAgain) {
+        flushAgain = false;
+        flushWrites({ force: true });
+      }
+    });
+    return flushing;
+  }
+  async function sendWaiting(opts) {
+    let sentLater = 0;
+    let touched = false;
+    let noSignal = false;
+    const refused = [];
+    for (const [taskId, p] of Object.entries(state.pendingWrites)) {
+      if (opts.conn && p.conn !== opts.conn) continue;
+      if (!opts.force && p.nextAt && Date.parse(p.nextAt) > Date.now()) continue;
+      if (noSignal) {
+        // the rest would fail the same way; mark them as waiting for signal
+        Object.assign(p, { tries: Math.max(1, p.tries || 0), error: 'offline', nextAt: new Date(Date.now() + 60000).toISOString() });
+        continue;
+      }
+      const conn = state.connectors.find((c) => c.id === p.conn);
+      const task = findTask(taskId);
+      const req = task && S.writeBackRequest(conn, task);
+      touched = true;
+      if (!req) {
+        delete state.pendingWrites[taskId];
+        continue;
+      }
+      let res = null;
+      try {
+        res = await httpFetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+      } catch (e) {
+        /* no signal or the other app did not answer */
+      }
+      const replaced = state.pendingWrites[taskId] !== p; // changed again meanwhile; the newer status goes next
+      if (res && (res.ok || !S.writeBackRetryable(res.status))) {
+        if (!replaced) delete state.pendingWrites[taskId];
+        if (res.ok) {
+          conn.lastWriteError = null;
+          if (p.tries) sentLater++;
+        } else {
+          conn.lastWriteError = `“${task.title}”: ${conn.name} ไม่รับสถานะใหม่ (HTTP ${res.status})`;
+          refused.push(conn.lastWriteError);
+        }
+        continue;
+      }
+      if (replaced) continue;
+      p.tries = (p.tries || 0) + 1;
+      p.error = res ? `HTTP ${res.status}` : 'offline';
+      p.nextAt = new Date(Date.now() + (res ? Math.min(30, 2 ** (p.tries - 1)) : 1) * 60000).toISOString();
+      if (!res) noSignal = true;
+    }
+    if (!touched) return;
+    save();
+    const pill = $('#sync-pill');
+    if (pill) pill.outerHTML = syncPill();
+    if (ui.view === 'apps') render();
+    if (ui.detailId) renderDetail();
+    if (refused.length) toast(refused[0]);
+    else if (sentLater) toast(`ส่งสถานะที่ค้างไว้ให้แอปต้นทางแล้ว ${sentLater} งาน`);
   }
   function setTaskDone(id, done) {
     const t = findTask(id);
     if (!t) return null;
     const r = S.setDone(t, done, ctx());
-    if (S.statusOf(r.task) !== S.statusOf(t)) writeBack(r.task);
     upsertLocal(r.task);
     if (r.spawn) upsertLocal(r.spawn);
     if (r.removeId) removeLocal(r.removeId);
+    if (S.statusOf(r.task) !== S.statusOf(t)) writeBack(r.task);
     Sync.send('PATCH', `/tasks/${enc(id)}`, { done }, id);
     changed();
     return r;
@@ -284,12 +350,15 @@
     const existing = state.tasks.find((t) => t.externalId && t.externalId === fields.externalId && t.source === source.source);
     if (existing) {
       const patch = Object.assign({}, fields);
-      const doneChange = patch.done !== undefined && patch.done !== existing.done;
+      // a status set here that the other app has not received yet wins over what it still says
+      const waiting = !!state.pendingWrites[existing.id];
+      if (waiting) delete patch.status;
+      const doneChange = !waiting && patch.done !== undefined && patch.done !== existing.done;
       delete patch.done;
       takeNewCategory(patch);
       let next = S.patchTask(existing, patch, ctx());
       if (doneChange) next = S.setDone(next, fields.done, ctx()).task;
-      const changedFields = ['title', 'notes', 'due', 'time', 'priority', 'category', 'done'].some((k) => (next[k] ?? null) !== (existing[k] ?? null));
+      const changedFields = ['title', 'notes', 'due', 'time', 'priority', 'category', 'done', 'status'].some((k) => (next[k] ?? null) !== (existing[k] ?? null));
       if (!changedFields) return 'same';
       upsertLocal(next);
       return 'updated';
@@ -629,6 +698,7 @@
         body: conf.method === 'POST' && conf.body ? conf.body : undefined,
       });
     } catch (e) {
+      if (NATIVE || navigator.onLine === false) throw Object.assign(new Error('ยังไม่มีสัญญาณเน็ต แสดงงานล่าสุดที่มีในเครื่องไปก่อน'), { offline: true });
       throw new Error('เรียก API ไม่ได้ ระบบปลายทางอาจไม่อนุญาตให้เรียกจากเบราว์เซอร์ (CORS) ให้เชื่อมต่อผ่านเซิร์ฟเวอร์ X10 แทน');
     }
     if (!res.ok) throw new Error(`ระบบปลายทางตอบกลับ HTTP ${res.status}`);
@@ -647,6 +717,7 @@
   async function syncLocalConnector(conn) {
     const source = { source: `connector:${conn.id}`, sourceName: conn.name };
     try {
+      await flushWrites({ force: true, conn: conn.id }); // send waiting statuses first, then read the list
       const json = await fetchFeed(conn);
       const mapped = S.mapResponse(json, conn, ctx());
       let created = 0;
@@ -660,25 +731,33 @@
       }
       if (conn.missingDone && !mapped.errors.length) {
         const seen = new Set(mapped.items.map((f) => f.externalId));
-        for (const t of state.tasks.filter((x) => x.source === source.source && !x.done && x.externalId && !seen.has(x.externalId))) {
+        for (const t of state.tasks.filter((x) => x.source === source.source && !x.done && x.externalId && !seen.has(x.externalId) && !state.pendingWrites[x.id])) {
           upsertLocal(S.setDone(t, true, ctx()).task);
           updated++;
         }
       }
-      Object.assign(conn, { lastSyncAt: nowISO(), lastStatus: 'ok', lastError: mapped.errors.length ? `${mapped.errors.length} รายการอ่านไม่ได้` : null, lastCount: mapped.items.length });
+      Object.assign(conn, { lastSyncAt: nowISO(), lastOkAt: nowISO(), lastStatus: 'ok', lastError: mapped.errors.length ? `${mapped.errors.length} รายการอ่านไม่ได้` : null, lastCount: mapped.items.length });
       changed();
       return { created, updated, total: mapped.total };
     } catch (e) {
-      Object.assign(conn, { lastSyncAt: nowISO(), lastStatus: 'error', lastError: e.message });
+      Object.assign(conn, { lastSyncAt: nowISO(), lastStatus: e.offline ? 'offline' : 'error', lastError: e.message });
       changed();
       throw e;
     }
   }
-  setInterval(() => {
+  // Pulls each connector whose round is due (maxAge minutes caps the wait, e.g. when the app is reopened).
+  function syncDueConnectors(maxAge) {
     if (Sync.on) return;
     for (const c of state.connectors) {
-      if (c.active !== false && c.interval && Date.now() - Date.parse(c.lastSyncAt || 0) >= c.interval * 60000) syncLocalConnector(c).catch(() => {});
+      if (c.active === false || !c.interval) continue;
+      const wait = Math.min(c.interval, maxAge || c.interval) * 60000;
+      if (Date.now() - Date.parse(c.lastSyncAt || 0) >= wait) syncLocalConnector(c).catch(() => {});
     }
+  }
+  setInterval(() => {
+    if (Sync.on) return;
+    flushWrites();
+    syncDueConnectors();
   }, 60000);
 
   // ---------- toast & dialogs ----------
@@ -994,6 +1073,8 @@
   }
 
   function syncPill() {
+    const waiting = Sync.on ? 0 : pendingCount();
+    if (waiting) return `<button type="button" id="sync-pill" class="pill warn" data-action="go" data-view="apps">รอส่ง ${waiting}</button>`;
     const map = {
       local: ['', ''],
       connecting: ['wait', 'กำลังเชื่อมต่อ'],
@@ -1138,7 +1219,7 @@
         <div class="row-main">
           <strong>${esc(c.name)}</strong>
           <span class="mono">${esc(hostOf(c.url))}</span>
-          <span class="row-sub">${c.lastStatus === 'error' ? `<em class="bad">ผิดพลาด: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน${c.lastError ? ` · ${esc(c.lastError)}` : ''}` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · อัตโนมัติทุก ${intervalLabel(c.interval)}` : ''}</span>
+          <span class="row-sub">${c.lastStatus === 'offline' ? `<span class="warn-text">ยังไม่มีสัญญาณ</span> · ใช้งานที่ดึงไว้${c.lastOkAt ? ` ${esc(ago(c.lastOkAt))}` : ''}` : c.lastStatus === 'error' ? `<em class="bad">ผิดพลาด: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน${c.lastError ? ` · ${esc(c.lastError)}` : ''}` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · อัตโนมัติทุก ${intervalLabel(c.interval)}` : ''}</span>
         </div>
         <div class="row-actions">
           <button type="button" class="icon-btn small" data-action="sync-connector" data-id="${esc(c.id)}" data-remote="${remote ? 1 : 0}" aria-label="ซิงก์ ${esc(c.name)} ตอนนี้">${icon('refresh')}</button>
@@ -1376,6 +1457,12 @@
   const connectorList = () => (Sync.on ? ui.remote.connectors : state.connectors);
   const appBadge = (app, small) => `<span class="app-badge${small ? ' small' : ''}" style="--app:${app ? app.color : 'var(--ink-3)'}">${app ? esc(app.badge) : icon('plug')}</span>`;
 
+  function waitingLabel(connId) {
+    const list = Object.values(state.pendingWrites).filter((p) => p.conn === connId);
+    const offline = list.some((p) => p.error === 'offline');
+    const err = (list.find((p) => p.error && p.error !== 'offline') || {}).error;
+    return `รอส่งสถานะ ${list.length} งาน · ${offline ? 'จะส่งเองเมื่อเน็ตกลับมา' : err ? `ปลายทางตอบ ${err} จะลองใหม่อัตโนมัติ` : 'กำลังส่ง'}`;
+  }
   function connectedRows() {
     const list = connectorList();
     if (!list.length) return '<div class="empty small"><p>ยังไม่ได้เชื่อมต่อแอปไหน เลือกแอปด้านล่างแล้วใส่ API key</p></div>';
@@ -1385,8 +1472,9 @@
         ${appBadge(app)}
         <div class="row-main">
           <strong>${esc(c.name)}</strong>
-          <span class="row-sub">${c.lastStatus === 'error' ? `<em class="bad">เชื่อมต่อไม่สำเร็จ: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `<span class="ok-text">เชื่อมต่อแล้ว</span> · ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · ทุก ${intervalLabel(c.interval)}` : ''}${c.writeBack ? ' · ซิงก์สองทาง' : ''}</span>
+          <span class="row-sub">${c.lastStatus === 'offline' ? `<span class="warn-text">ยังไม่มีสัญญาณ</span> · ใช้งานที่ดึงไว้${c.lastOkAt ? ` ${esc(ago(c.lastOkAt))}` : ''}` : c.lastStatus === 'error' ? `<em class="bad">เชื่อมต่อไม่สำเร็จ: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `<span class="ok-text">เชื่อมต่อแล้ว</span> · ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · ทุก ${intervalLabel(c.interval)}` : ''}${c.writeBack ? ' · ซิงก์สองทาง' : ''}</span>
           ${c.lastWriteError ? `<span class="row-sub"><em class="bad">${esc(c.lastWriteError)}</em></span>` : ''}
+          ${!Sync.on && pendingCount(c.id) ? `<span class="row-sub warn-text">${waitingLabel(c.id)}</span>` : ''}
         </div>
         <div class="row-actions">
           <button type="button" class="icon-btn small" data-action="sync-connector" data-id="${esc(c.id)}" data-remote="${Sync.on ? 1 : 0}" aria-label="ซิงก์ ${esc(c.name)} ตอนนี้">${icon('refresh')}</button>
@@ -1421,7 +1509,7 @@
           <button type="button" class="app-card" data-action="new-connector"${locked ? ' disabled' : ''}>
             ${appBadge(null)}<span class="app-name">API อื่น ๆ</span><span class="app-desc">กรอกที่อยู่ API คีย์ และจับคู่ฟิลด์เอง</span></button>
         </div>
-        <p class="hint">${Sync.on ? 'เซิร์ฟเวอร์ X10 เป็นผู้ดึงงานจากแอปเหล่านี้ตามรอบ แม้ปิดมือถือ' : NATIVE ? 'แอปบนมือถือดึงงานจากแอปเหล่านี้โดยตรง และซิงก์ตามรอบขณะเปิดแอป' : 'บนเบราว์เซอร์ บางแอปไม่อนุญาตให้เรียกโดยตรง (CORS) ใช้แอป Android หรือเชื่อมต่อเซิร์ฟเวอร์ X10 จะดึงได้ทุกแอป'}</p>
+        <p class="hint">${Sync.on ? 'เซิร์ฟเวอร์ X10 เป็นผู้ดึงงานจากแอปเหล่านี้ตามรอบ แม้ปิดมือถือ' : NATIVE ? 'ไม่ต้องมีเซิร์ฟเวอร์ แอปบนมือถือดึงงานจากแอปเหล่านี้เองผ่านเน็ตมือถือหรือ Wi-Fi ทุกครั้งที่เปิดแอปและตามรอบ ถ้าไม่มีสัญญาณ สถานะที่แก้จะรอแล้วส่งให้เองเมื่อเน็ตกลับมา' : 'บนเบราว์เซอร์ บางแอปไม่อนุญาตให้เรียกโดยตรง (CORS) ใช้แอป Android หรือเชื่อมต่อเซิร์ฟเวอร์ X10 จะดึงได้ทุกแอป'}</p>
       </section>
       <section class="panel">
         <div class="panel-head"><span class="panel-icon">${icon('link')}</span><div><h2>ให้แอปอื่นส่งงานเข้ามาแทน</h2><p>ถ้าแอปนั้นส่ง Webhook ได้ สร้างลิงก์ API ของ X10 ไปใส่ในแอปนั้น งานจะเข้ามาทันที</p></div></div>
@@ -1878,6 +1966,8 @@
     if (t.repeat) meta.push(`<span>${icon('repeat')}${esc((REPEAT_OPTS.find(([v]) => v === t.repeat) || [0, t.repeat])[1])}</span>`);
     if (t.priority) meta.push(`<span class="prio-${t.priority}">${icon('flag')}${t.priority === 2 ? 'ด่วน' : 'สำคัญ'}</span>`);
     if (t.sourceName) meta.push(`<span>${icon('inbox')}มาจาก ${esc(t.sourceName)}${t.externalId ? ` · #${esc(t.externalId)}` : ''}</span>`);
+    const wait = !Sync.on && state.pendingWrites[t.id];
+    if (wait) meta.push(`<span class="warn-text">${icon('refresh')}${wait.error === 'offline' ? `ยังไม่มีสัญญาณ จะส่งสถานะให้ ${esc(t.sourceName || 'แอปต้นทาง')} เมื่อเน็ตกลับมา` : `รอส่งสถานะให้ ${esc(t.sourceName || 'แอปต้นทาง')}`}</span>`);
 
     const steps = (t.subtasks || []).map((x, i) => {
       const cur = x === info.current;
@@ -2361,6 +2451,7 @@
           state.settings.server = server;
           Native.server();
           state.outbox = [];
+          state.pendingWrites = {}; // the server sends statuses to other apps from now on
           ui.serverHint = false;
           ui.remote = { keys: [], webhooks: [], connectors: [], loaded: false, error: null };
           save();
@@ -2665,6 +2756,7 @@
           loadRemote();
         } else {
           state.connectors = state.connectors.filter((x) => x.id !== el.dataset.id);
+          for (const [id, w] of Object.entries(state.pendingWrites)) if (w.conn === el.dataset.id) delete state.pendingWrites[id];
           save();
           render();
         }
@@ -2839,7 +2931,7 @@
   });
   window.addEventListener('popstate', () => go((location.hash || '#tasks').slice(1), { push: false }));
   window.addEventListener('hashchange', () => go((location.hash || '#tasks').slice(1), { push: false }));
-  window.addEventListener('online', () => Sync.on && Sync.start());
+  window.addEventListener('online', () => (Sync.on ? Sync.start() : flushWrites({ force: true })));
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     ui.installPrompt = e;
@@ -2917,6 +3009,10 @@
       Reminders.check();
       Native.push();
       if (Sync.on && Sync.status !== 'online') Sync.start();
+      if (!Sync.on) {
+        flushWrites({ force: true });
+        syncDueConnectors(2);
+      }
     },
     permissionChanged: () => ui.view === 'options' && render(),
     httpResult,
@@ -2954,6 +3050,10 @@
   Native.applyWidgetActions();
   Native.push();
   Sync.start().then(() => (ui.view === 'connect' || ui.view === 'apps') && loadRemote());
+  if (!Sync.on) {
+    flushWrites({ force: true });
+    syncDueConnectors(2);
+  }
   detectServer();
   handleIncoming();
   if (!DEMO && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

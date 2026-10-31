@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.6.0';
+  const VERSION = '1.6.1';
   const STATUSES = ['todo', 'doing', 'done'];
   const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
   const COLORS = ['blue', 'green', 'amber', 'rose', 'violet', 'slate'];
@@ -913,6 +913,15 @@
     };
   }
 
+  /**
+   * After the other app refused a status write-back with this HTTP status: is it worth sending again later?
+   * Busy / down / rate limited / key not accepted yet → yes. Task gone or request rejected → no, retrying won't help.
+   */
+  function writeBackRetryable(httpStatus) {
+    const s = Number(httpStatus);
+    return s === 401 || s === 403 || s === 408 || s === 425 || s === 429 || s >= 500;
+  }
+
   // Built-in sample feed so the import screen can be tried without another system.
   function demoFeed(name, today) {
     if (name !== 'hotel-pms') return null;
@@ -962,7 +971,7 @@
     ValidationError, uid, randomHex, pad, parseStatus, statusOf, compareTasks, buckets, nextUp, widgetPayload,
     stepInfo, completeStep, STEP_TEMPLATES,
     ACCENTS, mix, contrast, accentTheme, categoryHex, validColor,
-    inferMapping, findTaskList, discoverApi, APP_CATALOG, writeBackRequest, detectKeyApp,
+    inferMapping, findTaskList, discoverApi, APP_CATALOG, writeBackRequest, writeBackRetryable, detectKeyApp,
     partsInZone, todayIn, addDays, addMonths, weekday, isValidDate,
     parseWhen, parseTime, parseReminder, parseRepeat, parsePriority, parseDone, parseSubtasks,
     resolveCategory, normalizeFields, createTask, patchTask, nextDue, setDone,
