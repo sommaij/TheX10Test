@@ -68,6 +68,7 @@
     left: '<path d="M15 5l-7 7 7 7"/>',
     right: '<path d="M9 5l7 7-7 7"/>',
     down: '<path d="M6 9l6 6 6-6"/>',
+    up: '<path d="M6 15l6-6 6 6"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     copy: '<rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v9A1.5 1.5 0 0 0 5 15.5h3.5"/>',
@@ -140,6 +141,7 @@
     search: '',
     searchOpen: false,
     filter: '',
+    detailId: null,
     calMonth: today().slice(0, 7),
     calDay: today(),
     serverHint: false,
@@ -159,12 +161,20 @@
     if (state.settings.seeded || state.tasks.length || state.settings.server) return;
     const td = today();
     const c = ctx();
-    const ex = (f) => S.createTask(f, c, { sample: true });
+    const ex = (f) => S.createTask(S.normalizeFields(f, c), c, { sample: true });
+    const at = (hhmm) => {
+      const d = toDate(td);
+      d.setHours(Number(hhmm.slice(0, 2)), Number(hhmm.slice(3)), 0, 0);
+      return d.toISOString();
+    };
     state.tasks = [
-      ex({ title: 'ส่งสรุปยอดจองประจำสัปดาห์', due: S.addDays(td, -1), time: '17:00', category: 'work', priority: 1 }),
+      ex({ title: 'ส่งสรุปยอดจองประจำสัปดาห์', due: S.addDays(td, -1), time: '17:00', category: 'work', priority: 1,
+        steps: [{ title: 'ดึงยอดจองจากระบบ PMS', detail: 'ช่วงวันจันทร์ถึงวันอาทิตย์ที่ผ่านมา', done: true, doneAt: at('08:10') },
+          { title: 'สรุปเทียบกับสัปดาห์ก่อน', detail: 'อัตราเข้าพัก รายได้ต่อห้อง ช่องทางการจอง' }, { title: 'ส่งให้ผู้จัดการ', detail: 'อีเมลพร้อมไฟล์แนบ' }] }),
       ex({ title: 'ประชุมทีมฝ่ายต้อนรับ', due: td, time: '09:30', category: 'work', repeat: 'weekdays', reminder: 15 }),
       ex({ title: 'ตรวจความเรียบร้อยวิลล่าก่อนแขก VIP เข้าพัก', due: td, time: '13:30', category: 'work', priority: 2, reminder: 30, status: 'doing',
-        subtasks: [{ title: 'ดอกไม้และการ์ดต้อนรับ', done: true }, { title: 'เช็กเครื่องปรับอากาศ', done: false }, { title: 'มินิบาร์ครบ', done: false }] }),
+        steps: [{ title: 'ดอกไม้และการ์ดต้อนรับ', detail: 'กุหลาบขาว + การ์ดเขียนชื่อแขก', done: true, doneAt: at('10:20') },
+          { title: 'เช็กเครื่องปรับอากาศ', detail: 'ตั้ง 24°C และเปิดล่วงหน้า 30 นาที' }, { title: 'มินิบาร์และของใช้ครบ', detail: 'ไวน์ต้อนรับ น้ำแร่ ผลไม้ตามฤดูกาล' }] }),
       ex({ title: 'ออกกำลังกาย 30 นาที', due: td, time: '18:00', category: 'personal', repeat: 'daily' }),
       ex({ title: 'ตอบอีเมลลูกค้ากลุ่มสัมมนา', due: td, time: '08:30', category: 'work', done: true }),
       ex({ title: 'จองตั๋วเครื่องบินไปเชียงใหม่', due: S.addDays(td, 1), time: '20:00', category: 'personal', reminder: 15 }),
@@ -265,6 +275,7 @@
   function changed(rerender = true) {
     save();
     if (rerender) render();
+    if (ui.detailId) renderDetail();
     Reminders.check();
     Native.push();
   }
@@ -276,6 +287,26 @@
     if (status === 'done') return setTaskDone(id, true);
     if (t.done) setTaskDone(id, false);
     if (S.statusOf(findTask(id)) !== status) updateTask(id, { status });
+  }
+
+  // Ticks one step; the last step finishes the whole task.
+  function completeTaskStep(id, stepId) {
+    const t = findTask(id);
+    if (!t || t.done) return null;
+    const r = S.completeStep(t, stepId, ctx());
+    updateTask(id, r.fields);
+    if (r.allDone) {
+      setTaskDone(id, true);
+      return 'finished';
+    }
+    return 'step';
+  }
+  function uncompleteTaskStep(id, stepId) {
+    const t = findTask(id);
+    if (!t) return;
+    if (t.done) setTaskStatus(id, 'doing');
+    const cur = findTask(id);
+    updateTask(id, { subtasks: (cur.subtasks || []).map((x) => (x.id === stepId ? Object.assign({}, x, { done: false }) : x)) });
   }
 
   // ---------- Android app: home-screen widgets, reminders, widget taps ----------
@@ -311,6 +342,7 @@
         const t = findTask(a.id);
         if (!t) continue;
         if (a.type === 'done' && !t.done) setTaskDone(a.id, true);
+        if (a.type === 'step' && !t.done && (t.subtasks || []).some((x) => x.id === a.stepId && !x.done)) completeTaskStep(a.id, a.stepId);
         if (a.type === 'doing' && !t.done) setTaskStatus(a.id, 'doing');
       }
     },
@@ -508,7 +540,7 @@
     },
     notify(t) {
       const when = t.time ? `${dueLabel(t.due)} ${t.time}` : dueLabel(t.due);
-      toast(`${icon('bell')} ถึงเวลา: ${esc(t.title)}`, { html: true, action: 'ดูงาน', onAction: () => openEditor(t.id) });
+      toast(`${icon('bell')} ถึงเวลา: ${esc(t.title)}`, { html: true, action: 'ดูงาน', onAction: () => openDetail(t.id) });
       if (NATIVE || !('Notification' in window) || Notification.permission !== 'granted') return;
       const opts = { body: when, tag: t.id, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { id: t.id } };
       try {
@@ -628,6 +660,7 @@
   let sheetReturnFocus = null;
   function openSheet(html, { label = '', onMount, wide = false } = {}) {
     const root = $('#sheet-root');
+    ui.detailId = null;
     sheetReturnFocus = document.activeElement;
     root.innerHTML = `<div class="sheet-backdrop" data-action="close-sheet"></div>
       <section class="sheet${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}">
@@ -643,6 +676,7 @@
   }
   function closeSheet() {
     const root = $('#sheet-root');
+    ui.detailId = null;
     if (root.hidden) return;
     root.classList.remove('open');
     document.body.classList.remove('locked');
@@ -727,6 +761,29 @@
     return m ? `${h} ชม. ${m} นาที` : `${h} ชม.`;
   }
 
+  // ---------- steps: which step a task is on ----------
+  /** A segmented bar, one segment per step: done, current, still to do. */
+  function stepBar(t, cls = '') {
+    const info = S.stepInfo(t);
+    if (!info.total) return '';
+    const segs = (t.subtasks || []).map((x) => `<i class="${x.done ? 'is-done' : x === info.current ? 'is-cur' : ''}"></i>`).join('');
+    return `<span class="step-bar st-${S.statusOf(t)} ${cls}" role="img" aria-label="เสร็จ ${info.done} จาก ${info.total} ขั้นตอน">${segs}</span>`;
+  }
+  /** "ขั้น 2/4 · ตรวจสอบหน้างาน" */
+  function stepText(t) {
+    const info = S.stepInfo(t);
+    if (!info.total) return '';
+    if (t.done || !info.current) return `ครบ ${info.total} ขั้นตอน`;
+    return `ขั้น ${info.index}/${info.total} · ${info.current.title}`;
+  }
+  function doneAtLabel(iso) {
+    if (!iso) return 'เสร็จแล้ว';
+    const d = new Date(iso);
+    const day = S.todayIn(undefined, d);
+    const hm = `${S.pad(d.getHours())}:${S.pad(d.getMinutes())}`;
+    return day === today() ? `เสร็จ ${hm}` : `เสร็จ ${dueLabel(day)} ${hm}`;
+  }
+
   function taskRow(t, { showDate = false } = {}) {
     const st = S.statusOf(t);
     const td = today();
@@ -736,15 +793,16 @@
     if (t.time) meta.push(`<span class="meta-time${!t.done && t.due === td && untilLabel(t).startsWith('เลย') ? ' late' : ''}">${icon('clock')}${esc(t.time)}</span>`);
     if (t.reminder !== null && t.reminder !== undefined) meta.push(`<span title="มีแจ้งเตือน">${icon('bell')}</span>`);
     if (t.repeat) meta.push(`<span title="ทำซ้ำ">${icon('repeat')}</span>`);
-    if (t.subtasks && t.subtasks.length) meta.push(`<span>${icon('checklist')}${t.subtasks.filter((s) => s.done).length}/${t.subtasks.length}</span>`);
     if (t.notes) meta.push(`<span title="มีบันทึก">${icon('note')}</span>`);
     if (t.sourceName) meta.push(`<span class="src">${icon('inbox')}${esc(t.sourceName)}</span>`);
     if (t.sample) meta.push('<span class="src sample">ตัวอย่าง</span>');
     const cat = catOf(t.category);
+    const steps = S.stepInfo(t).total ? `<span class="task-step">${stepBar(t)}<span class="task-step-t">${esc(stepText(t))}</span></span>` : '';
     return `<li class="task st-${st}${t.priority ? ' p' + t.priority : ''}" data-id="${esc(t.id)}" style="--cat:${catColor(t.category)}">
       <button type="button" class="check" data-action="toggle" data-id="${esc(t.id)}" role="checkbox" aria-checked="${t.done}" aria-label="${t.done ? 'ยกเลิกเสร็จ' : 'ทำเสร็จ'}: ${esc(t.title)}">${icon('check')}</button>
       <button type="button" class="task-body" data-action="open" data-id="${esc(t.id)}">
         <span class="task-title">${esc(t.title)}</span>
+        ${steps}
         ${meta.length || cat ? `<span class="task-meta">${cat && ui.category === 'all' ? `<span class="cat-tag"><i></i>${esc(cat.name)}</span>` : ''}${meta.join('')}</span>` : ''}
       </button>
       ${t.priority ? `<span class="prio" title="${t.priority === 2 ? 'ด่วน' : 'สำคัญ'}">${icon('flag')}</span>` : ''}
@@ -874,14 +932,18 @@
     const cat = catOf(t.category);
     const late = t.due && (t.due < today() || untilLabel(t).startsWith('เลย'));
     const label = st === 'doing' ? 'กำลังทำอยู่' : 'ถัดไป';
+    const info = S.stepInfo(t);
     return `<section class="next ${st === 'doing' ? 'is-doing' : ''}${late ? ' is-late' : ''}" style="--cat:${catColor(t.category)}" aria-label="${label}">
       <button type="button" class="next-main" data-action="open" data-id="${esc(t.id)}">
         <span class="next-eyebrow">${icon(st === 'doing' ? 'play' : 'clock')}${label}${t.due ? ` · <b>${esc(untilLabel(t))}</b>` : ''}</span>
         <span class="next-title">${esc(t.title)}</span>
-        <span class="next-meta">${cat ? `<span class="cat-tag"><i></i>${esc(cat.name)}</span>` : ''}${t.time ? `<span>${icon('clock')}${esc(t.time)}</span>` : ''}${t.subtasks && t.subtasks.length ? `<span>${icon('checklist')}${t.subtasks.filter((s) => s.done).length}/${t.subtasks.length}</span>` : ''}</span>
+        ${info.total ? `<span class="next-step">${stepBar(t)}<span>${esc(stepText(t))}</span></span>` : ''}
+        <span class="next-meta">${cat ? `<span class="cat-tag"><i></i>${esc(cat.name)}</span>` : ''}${t.time ? `<span>${icon('clock')}${esc(t.time)}</span>` : ''}</span>
       </button>
       <div class="next-actions">
-        ${st === 'doing'
+        ${st === 'doing' && info.current
+          ? `<button type="button" class="btn small primary" data-action="complete-step" data-id="${esc(t.id)}" data-step="${esc(info.current.id)}">${icon('check')} ขั้นนี้เสร็จ</button>`
+          : st === 'doing'
           ? `<button type="button" class="btn small primary" data-action="toggle" data-id="${esc(t.id)}">${icon('check')} เสร็จแล้ว</button>`
           : `<button type="button" class="btn small doing" data-action="start" data-id="${esc(t.id)}">${icon('play')} เริ่มทำ</button>
              <button type="button" class="btn small ghost" data-action="toggle" data-id="${esc(t.id)}" aria-label="ทำเสร็จ">${icon('check')}</button>`}
@@ -920,7 +982,7 @@
       ${ui.filter ? '' : nextUpCard(S.nextUp(b))}
       <div class="chips-bar">
         <div class="search-row"${ui.searchOpen ? '' : ' hidden'}>
-          ${icon('search')}<input id="search-input" type="search" placeholder="ค้นหางาน บันทึก หรืองานย่อย" value="${esc(ui.search)}" autocomplete="off" aria-label="ค้นหางาน">
+          ${icon('search')}<input id="search-input" type="search" placeholder="ค้นหางาน บันทึก หรือขั้นตอน" value="${esc(ui.search)}" autocomplete="off" aria-label="ค้นหางาน">
         </div>
         <div class="chips" role="toolbar" aria-label="หมวดหมู่">${chips}
           <button type="button" class="chip add" data-action="new-category" aria-label="เพิ่มหมวดหมู่">${icon('plus')}</button></div>
@@ -1123,6 +1185,8 @@
     const parts = [];
     if (st === 'doing') parts.push('<em class="doing">กำลังทำ</em>');
     else if (t.due && t.due < td) parts.push('<em class="late">เลยกำหนด</em>');
+    const info = S.stepInfo(t);
+    if (info.current) parts.push(`ขั้น ${info.index}/${info.total} ${esc(info.current.title)}`);
     if (t.due && t.due !== td) parts.push(esc(dueLabel(t.due)));
     if (t.time) parts.push(esc(t.time));
     const cat = catOf(t.category);
@@ -1138,6 +1202,7 @@
         <span class="hw-btn">${icon('refresh')}</span><span class="hw-btn add">${icon('plus')}</span></div>
       <div class="hw-tiles">${tiles.map(([k, v, l]) => `<div class="hw-tile st-${k}${v ? '' : ' zero'}"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
       <div class="hw-next">${n ? `<span class="hw-next-k${S.statusOf(n) === 'doing' ? ' doing' : ''}">${S.statusOf(n) === 'doing' ? 'กำลังทำ' : 'ถัดไป'}${n.time ? ' ' + esc(n.time) : ''}</span><span class="hw-next-t">${esc(n.title)}</span>` : '<span class="hw-next-t">ไม่มีงานค้าง</span>'}</div>
+      ${n && S.stepInfo(n).current ? `<div class="hw-step"><span>ขั้น ${S.stepInfo(n).index}/${S.stepInfo(n).total} · ${esc(S.stepInfo(n).current.title)}</span><span class="hw-bar"><span style="width:${Math.round((S.stepInfo(n).done / S.stepInfo(n).total) * 100)}%"></span></span></div>` : ''}
     </div>`;
   }
   function homeWidgetList(b, max = 5) {
@@ -1147,7 +1212,7 @@
         <span class="hw-counts"><i class="late">เลย ${b.overdue.length}</i><i>วันนี้ ${b.today.length}</i><i class="doing">ทำอยู่ ${b.doing.length}</i></span></div>
         <span class="hw-btn add">${icon('plus')}</span></div>
       <ul class="hw-rows">${rows.slice(0, max).map((t) => `<li class="st-${S.statusOf(t)}" style="--cat:${catColor(t.category)}"><span class="hw-check"></span>
-        <span class="hw-row-text"><span class="hw-row-t">${esc(t.title)}</span><span class="hw-row-m">${widgetRowMeta(t)}</span></span>${t.priority ? `<span class="hw-flag p${t.priority}">${icon('flag')}</span>` : ''}</li>`).join('') || '<li class="hw-empty">ไม่มีงานค้าง เยี่ยมมาก</li>'}</ul>
+        <span class="hw-row-text"><span class="hw-row-t">${esc(t.title)}</span><span class="hw-row-m">${widgetRowMeta(t)}</span>${S.stepInfo(t).total ? `<span class="hw-bar"><span style="width:${Math.round((S.stepInfo(t).done / S.stepInfo(t).total) * 100)}%"></span></span>` : ''}</span>${t.priority ? `<span class="hw-flag p${t.priority}">${icon('flag')}</span>` : ''}</li>`).join('') || '<li class="hw-empty">ไม่มีงานค้าง เยี่ยมมาก</li>'}</ul>
       ${rows.length > max ? `<p class="hw-more">อีก ${rows.length - max} งาน · แตะเพื่อเปิดแอป</p>` : ''}
     </div>`;
   }
@@ -1254,6 +1319,91 @@
   const PRIOS = [[0, 'ปกติ'], [1, 'สำคัญ'], [2, 'ด่วน']];
   const STATUS_OPTS = [['todo', 'รอทำ', 'clock'], ['doing', 'กำลังทำ', 'play'], ['done', 'เสร็จแล้ว', 'check']];
 
+  // ---------- task detail: status, the step it is on, and every step's details ----------
+  const STATUS_LABEL = { todo: 'รอทำ', doing: 'กำลังทำ', done: 'เสร็จแล้ว' };
+  function openDetail(id) {
+    if (!findTask(id)) return;
+    const sheet = openSheet('<div id="detail"></div>', { label: 'รายละเอียดงาน' });
+    ui.detailId = id;
+    sheet.classList.add('detail-sheet');
+    renderDetail();
+  }
+  function renderDetail() {
+    const box = $('#detail');
+    const t = ui.detailId && findTask(ui.detailId);
+    if (!box) return;
+    if (!t) {
+      closeSheet();
+      return;
+    }
+    const st = S.statusOf(t);
+    const info = S.stepInfo(t);
+    const cat = catOf(t.category);
+    const late = !t.done && t.due && (t.due < today() || untilLabel(t).startsWith('เลย'));
+    const meta = [];
+    if (t.due) meta.push(`<span class="${late ? 'late' : ''}">${icon('calendar')}${esc(dueLabel(t.due))}${t.time ? ' ' + esc(t.time) : ''}${!t.done ? ` · ${esc(untilLabel(t))}` : ''}</span>`);
+    else meta.push(`<span>${icon('calendar')}ไม่มีกำหนด</span>`);
+    if (t.reminder !== null && t.reminder !== undefined) meta.push(`<span>${icon('bell')}${esc((REMINDERS.find(([v]) => v === String(t.reminder)) || [0, `ก่อน ${t.reminder} นาที`])[1])}</span>`);
+    if (t.repeat) meta.push(`<span>${icon('repeat')}${esc((REPEAT_OPTS.find(([v]) => v === t.repeat) || [0, t.repeat])[1])}</span>`);
+    if (t.priority) meta.push(`<span class="prio-${t.priority}">${icon('flag')}${t.priority === 2 ? 'ด่วน' : 'สำคัญ'}</span>`);
+    if (t.sourceName) meta.push(`<span>${icon('inbox')}มาจาก ${esc(t.sourceName)}${t.externalId ? ` · #${esc(t.externalId)}` : ''}</span>`);
+
+    const steps = (t.subtasks || []).map((x, i) => {
+      const cur = x === info.current;
+      const state = x.done ? 'is-done' : cur ? 'is-cur' : 'is-todo';
+      const when = x.done ? `<span class="sx-time">${icon('check')}${esc(doneAtLabel(x.doneAt))}</span>` : cur ? `<span class="sx-tag">${st === 'doing' ? 'กำลังทำขั้นนี้' : 'ขั้นถัดไป'}</span>` : '<span class="sx-wait">รอ</span>';
+      return `<li class="sx ${state}">
+        <button type="button" class="sx-dot" data-action="${x.done ? 'uncomplete-step' : 'complete-step'}" data-id="${esc(t.id)}" data-step="${esc(x.id)}" aria-label="${x.done ? 'ยกเลิกขั้นที่' : 'ทำเสร็จขั้นที่'} ${i + 1}: ${esc(x.title)}">${x.done ? icon('check') : `<span>${i + 1}</span>`}</button>
+        <div class="sx-body">
+          <div class="sx-head"><span class="sx-title">${esc(x.title)}</span>${when}</div>
+          ${x.detail ? `<p class="sx-detail">${esc(x.detail)}</p>` : ''}
+          ${cur && !t.done ? `<button type="button" class="btn small ${st === 'doing' ? 'primary' : 'doing'}" data-action="complete-step" data-id="${esc(t.id)}" data-step="${esc(x.id)}">${icon('check')} ขั้นนี้เสร็จ</button>` : ''}
+        </div>
+      </li>`;
+    }).join('');
+
+    let primary;
+    if (t.done) primary = `<button type="button" class="btn primary" data-action="set-status" data-id="${esc(t.id)}" data-status="todo">${icon('refresh')} เปิดงานอีกครั้ง</button>`;
+    else if (st === 'todo') primary = `<button type="button" class="btn doing" data-action="set-status" data-id="${esc(t.id)}" data-status="doing">${icon('play')} เริ่มทำ</button>`;
+    else if (info.current) primary = `<button type="button" class="btn primary" data-action="complete-step" data-id="${esc(t.id)}" data-step="${esc(info.current.id)}">${icon('check')} ขั้น ${info.index} เสร็จ</button>`;
+    else primary = `<button type="button" class="btn primary" data-action="toggle" data-id="${esc(t.id)}">${icon('check')} ทำเสร็จ</button>`;
+
+    box.innerHTML = `
+      <header class="sheet-head dt-head">
+        <div class="dt-tags">
+          <span class="dt-status st-${st}">${icon(st === 'done' ? 'check' : st === 'doing' ? 'play' : 'clock')}${STATUS_LABEL[st]}</span>
+          ${late ? `<span class="dt-status st-overdue">${icon('alert')}เลยกำหนด</span>` : ''}
+          ${cat ? `<span class="cat-tag" style="--cat:var(--c-${cat.color})"><i></i>${esc(cat.name)}</span>` : ''}
+        </div>
+        <button type="button" class="icon-btn" data-action="edit-task" data-id="${esc(t.id)}" aria-label="แก้ไขงาน">${icon('edit')}</button>
+        <button type="button" class="icon-btn" data-action="close-sheet" aria-label="ปิด">${icon('x')}</button>
+      </header>
+      <div class="detail">
+        <h2 class="dt-title${t.done ? ' is-done' : ''}">${esc(t.title)}</h2>
+        <div class="dt-meta">${meta.join('')}</div>
+        ${info.total ? `
+        <section class="dt-steps" aria-label="ขั้นตอน">
+          <div class="dt-steps-head">
+            <strong>${t.done ? `ครบ ${info.total} ขั้นตอน` : info.current ? `อยู่ที่ขั้น ${info.index} จาก ${info.total}` : `ครบ ${info.total} ขั้นตอน`}</strong>
+            <span>เสร็จ ${info.done}/${info.total}</span>
+          </div>
+          ${stepBar(t, 'big')}
+          <ol class="stepper st-${st}">${steps}</ol>
+        </section>` : `
+        <section class="dt-steps empty-steps">
+          <p>ยังไม่มีขั้นตอน แบ่งงานเป็นขั้นตอนเพื่อดูว่างานถึงไหนแล้ว</p>
+          <button type="button" class="btn small ghost" data-action="edit-task" data-id="${esc(t.id)}">${icon('plus')} เพิ่มขั้นตอน</button>
+        </section>`}
+        ${t.notes ? `<section class="dt-notes"><span class="field-label">${icon('note')} บันทึก</span><p>${esc(t.notes)}</p></section>` : ''}
+        <p class="dt-stamp">สร้างเมื่อ ${esc(ago(t.createdAt))}${t.done ? ` · ${esc(doneAtLabel(t.doneAt))}` : ''}</p>
+      </div>
+      <footer class="sheet-foot">
+        ${t.done ? '<span></span>' : `<button type="button" class="btn ghost" data-action="toggle" data-id="${esc(t.id)}" aria-label="ทำเสร็จทั้งงาน">${icon('check')} เสร็จทั้งงาน</button>`}
+        ${primary}
+      </footer>`;
+  }
+
+
   function quickDue(kind) {
     const td = today();
     if (kind === 'today') return td;
@@ -1312,9 +1462,11 @@
         </div>
 
         <div class="field">
-          <span class="field-label">${icon('checklist')} งานย่อย</span>
-          <ul class="subs" id="f-subs">${(t.subtasks || []).map(subRow).join('')}</ul>
-          <div class="sub-add"><input type="text" id="f-sub-new" placeholder="เพิ่มงานย่อย แล้วกด Enter" maxlength="300" aria-label="งานย่อยใหม่"><button type="button" class="icon-btn small" data-sub-add aria-label="เพิ่มงานย่อย">${icon('plus')}</button></div>
+          <span class="field-label">${icon('checklist')} ขั้นตอน <span class="muted">เรียงตามลำดับที่ทำ ติ๊กเมื่อขั้นนั้นเสร็จ</span></span>
+          <ol class="steps-edit" id="f-subs">${(t.subtasks || []).map(stepRow).join('')}</ol>
+          <div class="sub-add"><input type="text" id="f-sub-new" placeholder="เพิ่มขั้นตอน แล้วกด Enter" maxlength="300" aria-label="ขั้นตอนใหม่"><button type="button" class="icon-btn small" data-sub-add aria-label="เพิ่มขั้นตอน">${icon('plus')}</button></div>
+          <label class="sr-only" for="f-template">ใช้ขั้นตอนสำเร็จรูป</label>
+          <select id="f-template" class="template-pick"><option value="">＋ ใช้ขั้นตอนสำเร็จรูป…</option>${S.STEP_TEMPLATES.map((x) => `<option value="${x.id}">${esc(x.name)} (${x.steps.length} ขั้น)</option>`).join('')}</select>
         </div>
 
         <label class="field"><span class="field-label">${icon('note')} บันทึก</span>
@@ -1330,8 +1482,18 @@
       onMount: (sheet) => bindEditor(sheet, existing),
     });
   }
-  function subRow(s) {
-    return `<li data-sid="${esc(s.id || S.uid('s_'))}"><input type="checkbox" ${s.done ? 'checked' : ''} aria-label="งานย่อยเสร็จ"><input type="text" value="${esc(s.title)}" maxlength="300" aria-label="ชื่องานย่อย"><button type="button" class="icon-btn small" data-sub-del aria-label="ลบงานย่อย">${icon('x')}</button></li>`;
+  function stepRow(s) {
+    return `<li data-sid="${esc(s.id || S.uid('s_'))}" data-done-at="${esc(s.doneAt || '')}">
+      <input type="checkbox" ${s.done ? 'checked' : ''} aria-label="ขั้นตอนนี้เสร็จแล้ว">
+      <div class="se-main">
+        <input type="text" class="se-title" value="${esc(s.title)}" maxlength="300" aria-label="ชื่อขั้นตอน">
+        <textarea class="se-detail" rows="1" maxlength="1000" placeholder="รายละเอียดของขั้นนี้ (ถ้ามี)" aria-label="รายละเอียดขั้นตอน">${esc(s.detail || '')}</textarea>
+      </div>
+      <div class="se-actions">
+        <button type="button" class="icon-btn small" data-sub-up aria-label="เลื่อนขึ้น">${icon('up')}</button>
+        <button type="button" class="icon-btn small" data-sub-del aria-label="ลบขั้นตอน">${icon('x')}</button>
+      </div>
+    </li>`;
   }
   function bindEditor(sheet, existing) {
     const form = $('#editor', sheet);
@@ -1355,7 +1517,7 @@
     const addSub = () => {
       const v = newSub.value.trim();
       if (!v) return;
-      subs.insertAdjacentHTML('beforeend', subRow({ title: v, done: false }));
+      subs.insertAdjacentHTML('beforeend', stepRow({ title: v, done: false }));
       newSub.value = '';
       newSub.focus();
     };
@@ -1369,6 +1531,17 @@
     subs.addEventListener('click', (e) => {
       const del = e.target.closest('[data-sub-del]');
       if (del) del.closest('li').remove();
+      const up = e.target.closest('[data-sub-up]');
+      if (up) {
+        const li = up.closest('li');
+        if (li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling);
+      }
+    });
+    $('#f-template', sheet).addEventListener('change', (e) => {
+      const tpl = S.STEP_TEMPLATES.find((x) => x.id === e.target.value);
+      e.target.value = '';
+      if (!tpl) return;
+      subs.insertAdjacentHTML('beforeend', tpl.steps.map(([title, detail]) => stepRow({ title, detail, done: false })).join(''));
     });
     const title = $('#f-title', sheet);
     title.addEventListener('keydown', (e) => {
@@ -1395,7 +1568,13 @@
         repeat: $('#f-repeat', sheet).value || null,
         priority: Number(($('input[name="prio"]:checked', sheet) || { value: 0 }).value),
         category: ($('input[name="cat"]:checked', sheet) || { value: '' }).value || null,
-        subtasks: $$('li', subs).map((li) => ({ id: li.dataset.sid, title: $('input[type="text"]', li).value.trim(), done: $('input[type="checkbox"]', li).checked })).filter((s) => s.title),
+        subtasks: $$('li', subs).map((li) => ({
+          id: li.dataset.sid,
+          title: $('.se-title', li).value.trim(),
+          detail: $('.se-detail', li).value.trim(),
+          done: $('input[type="checkbox"]', li).checked,
+          doneAt: li.dataset.doneAt || null,
+        })).filter((x) => x.title),
       };
       if (fields.repeat && !fields.due) fields.due = today();
       closeSheet();
@@ -1404,6 +1583,7 @@
         updateTask(existing.id, fields);
         setTaskStatus(existing.id, status);
         toast('บันทึกแล้ว');
+        openDetail(existing.id);
       } else {
         if (status === 'done') fields.done = true;
         if (status === 'doing') fields.status = 'doing';
@@ -1712,7 +1892,25 @@
     go: (el) => go(el.dataset.view),
     'close-sheet': () => closeSheet(),
     copy: (el) => copyText(el.dataset.text, el),
-    open: (el) => openEditor(el.dataset.id),
+    open: (el) => openDetail(el.dataset.id),
+    'edit-task': (el) => openEditor(el.dataset.id),
+    'set-status': (el) => {
+      setTaskStatus(el.dataset.id, el.dataset.status);
+      toast(el.dataset.status === 'doing' ? 'เริ่มทำแล้ว' : 'เปิดงานอีกครั้งแล้ว');
+    },
+    'complete-step': (el) => {
+      const t = findTask(el.dataset.id);
+      const step = t && (t.subtasks || []).find((x) => x.id === el.dataset.step);
+      if (!step) return;
+      const before = S.statusOf(t);
+      const r = completeTaskStep(t.id, step.id);
+      if (r === 'finished') toast('ครบทุกขั้นตอน งานเสร็จแล้ว', { action: 'เลิกทำ', onAction: () => { setTaskStatus(t.id, before); uncompleteTaskStep(t.id, step.id); } });
+      else if (r) {
+        const info = S.stepInfo(findTask(t.id));
+        toast(`ขั้น “${step.title}” เสร็จ${info.current ? ` · ต่อไป: ${info.current.title}` : ''}`, { action: 'เลิกทำ', onAction: () => uncompleteTaskStep(t.id, step.id) });
+      }
+    },
+    'uncomplete-step': (el) => uncompleteTaskStep(el.dataset.id, el.dataset.step),
     toggle: (el) => {
       const id = el.dataset.id;
       const t = findTask(id);
@@ -2077,7 +2275,7 @@
   window.X10App = {
     openTask: (id) => {
       if (ui.view !== 'tasks') go('tasks');
-      openEditor(id);
+      openDetail(id);
     },
     newTask: () => openEditor(null),
     filter: (f) => {
@@ -2128,7 +2326,7 @@
   if (!DEMO && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'open-task') openEditor(e.data.id);
+      if (e.data && e.data.type === 'open-task') openDetail(e.data.id);
     });
   }
   // Keep the clock, timeline and "today" fresh without disturbing someone who is typing.

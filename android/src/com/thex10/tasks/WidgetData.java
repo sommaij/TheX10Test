@@ -22,9 +22,33 @@ import java.util.Locale;
 final class WidgetData {
     private static final String PREFS = "x10_widget";
 
+    static final class Step {
+        String id, title;
+        boolean done;
+    }
+
     static final class Task {
         String id, title, due, time, status, category, subtasks;
         int priority, color;
+        final List<Step> steps = new ArrayList<>();
+
+        /** The step being worked on now (first one not done), or null. */
+        Step currentStep() {
+            for (Step s : steps) if (!s.done) return s;
+            return null;
+        }
+
+        int stepsDone() {
+            int n = 0;
+            for (Step s : steps) if (s.done) n++;
+            return n;
+        }
+
+        /** 1-based position of the current step. */
+        int currentIndex() {
+            Step c = currentStep();
+            return c == null ? steps.size() : steps.indexOf(c) + 1;
+        }
     }
 
     static final class Buckets {
@@ -86,6 +110,15 @@ final class WidgetData {
                 t.subtasks = j.optString("subtasks", "");
                 t.priority = j.optInt("priority", 0);
                 t.color = parseColor(j.optString("color"), 0xFF6F8592);
+                JSONArray steps = j.optJSONArray("steps");
+                for (int k = 0; steps != null && k < steps.length(); k++) {
+                    JSONObject sj = steps.getJSONObject(k);
+                    Step st = new Step();
+                    st.id = sj.optString("id");
+                    st.title = sj.optString("title");
+                    st.done = sj.optBoolean("done", false);
+                    t.steps.add(st);
+                }
                 d.tasks.add(t);
             }
             JSONObject dd = o.optJSONObject("doneDays");
@@ -155,6 +188,52 @@ final class WidgetData {
         } catch (JSONException e) {
             // ignore: the tap is lost rather than corrupting stored data
         }
+    }
+
+    /**
+     * Ticked a step on the widget: mark it done here at once and tell the app next time it opens.
+     * Returns true when that was the last step, so the whole task is now done.
+     */
+    static synchronized boolean markStep(Context c, String id, String stepId) {
+        SharedPreferences p = prefs(c);
+        boolean finished = false;
+        try {
+            JSONObject o = new JSONObject(p.getString("payload", "{}"));
+            JSONArray arr = o.optJSONArray("tasks");
+            JSONArray kept = new JSONArray();
+            for (int i = 0; arr != null && i < arr.length(); i++) {
+                JSONObject j = arr.getJSONObject(i);
+                if (id.equals(j.optString("id"))) {
+                    JSONArray steps = j.optJSONArray("steps");
+                    boolean all = steps != null && steps.length() > 0;
+                    for (int k = 0; steps != null && k < steps.length(); k++) {
+                        JSONObject sj = steps.getJSONObject(k);
+                        if (stepId.equals(sj.optString("id"))) sj.put("done", true);
+                        if (!sj.optBoolean("done")) all = false;
+                    }
+                    j.put("status", "doing");
+                    if (all) {
+                        finished = true;
+                        continue;
+                    }
+                }
+                kept.put(j);
+            }
+            o.put("tasks", kept);
+            if (finished) {
+                JSONObject dd = o.optJSONObject("doneDays");
+                if (dd == null) dd = new JSONObject();
+                String day = today();
+                dd.put(day, dd.optInt(day, 0) + 1);
+                o.put("doneDays", dd);
+            }
+            JSONArray actions = new JSONArray(p.getString("actions", "[]"));
+            actions.put(new JSONObject().put("type", "step").put("id", id).put("stepId", stepId).put("at", System.currentTimeMillis()));
+            p.edit().putString("payload", o.toString()).putString("actions", actions.toString()).apply();
+        } catch (JSONException e) {
+            // ignore: the tap is lost rather than corrupting stored data
+        }
+        return finished;
     }
 
     /** Server data replaces ours, except tasks the user just ticked here and the server has not seen yet. */

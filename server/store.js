@@ -155,6 +155,16 @@ class Store extends EventEmitter {
     if (i >= 0) this.db.tasks[i] = task;
   }
 
+  /** Ticks one step; finishing the last step finishes the task. Returns null if the task or step is unknown. */
+  completeStep(id, stepId) {
+    const task = this.getTask(id);
+    if (!task || !(task.subtasks || []).some((x) => x.id === stepId)) return null;
+    const { fields, allDone } = S.completeStep(task, stepId, this.ctx());
+    let updated = this.updateTask(id, fields);
+    if (allDone && !updated.done) updated = this.updateTask(id, { done: true });
+    return updated;
+  }
+
   deleteTask(id) {
     const i = this.db.tasks.findIndex((t) => t.id === id);
     if (i < 0) return null;
@@ -301,7 +311,7 @@ class Store extends EventEmitter {
 const COMPARED = ['title', 'notes', 'category', 'due', 'time', 'reminder', 'repeat', 'priority', 'status', 'externalId', 'sourceName'];
 function sameTask(a, b) {
   if (COMPARED.some((k) => (a[k] ?? null) !== (b[k] ?? null))) return false;
-  const subs = (t) => JSON.stringify((t.subtasks || []).map((s) => [s.title, s.done]));
+  const subs = (t) => JSON.stringify((t.subtasks || []).map((s) => [s.title, s.done, s.detail || '']));
   return subs(a) === subs(b);
 }
 

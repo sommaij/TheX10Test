@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const STATUSES = ['todo', 'doing', 'done'];
   const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
   const COLORS = ['blue', 'green', 'amber', 'rose', 'violet', 'slate'];
@@ -203,17 +203,39 @@
     return t.done ? 'done' : t.status === 'doing' ? 'doing' : 'todo';
   }
 
+  // Steps (stored as `subtasks`): ordered, each with an optional detail and the time it was finished.
   function parseSubtasks(value) {
     if (value === null || value === undefined) return [];
-    if (!Array.isArray(value)) throw new ValidationError('subtasks must be an array', 'subtasks');
+    if (!Array.isArray(value)) throw new ValidationError('steps must be an array', 'subtasks');
     return value.slice(0, 50).map((s) => {
-      if (typeof s === 'string' || typeof s === 'number') return { id: uid('s_'), title: String(s).slice(0, 300), done: false };
+      if (typeof s === 'string' || typeof s === 'number') return { id: uid('s_'), title: String(s).slice(0, 300), detail: '', done: false, doneAt: null };
       if (s && typeof s === 'object') {
         const title = String(s.title ?? s.text ?? s.name ?? '').trim().slice(0, 300);
-        return { id: typeof s.id === 'string' && s.id ? s.id.slice(0, 64) : uid('s_'), title, done: s.done !== undefined ? parseDone(s.done) : s.completed !== undefined ? parseDone(s.completed) : false };
+        const detail = String(s.detail ?? s.details ?? s.note ?? s.description ?? '').trim().slice(0, 1000);
+        const done = s.done !== undefined ? parseDone(s.done) : s.completed !== undefined ? parseDone(s.completed) : s.status !== undefined ? parseStatus(s.status) === 'done' : false;
+        const doneAt = done && typeof s.doneAt === 'string' && !isNaN(Date.parse(s.doneAt)) ? new Date(s.doneAt).toISOString() : null;
+        return { id: typeof s.id === 'string' && s.id ? s.id.slice(0, 64) : uid('s_'), title, detail, done, doneAt };
       }
-      throw new ValidationError('Invalid subtask', 'subtasks');
+      throw new ValidationError('Invalid step', 'subtasks');
     }).filter((s) => s.title);
+  }
+
+  /** Where a task is: how many steps, how many done, and the step being worked on now. */
+  function stepInfo(t) {
+    const steps = t.subtasks || [];
+    const done = steps.filter((s) => s.done).length;
+    const current = t.done ? null : steps.find((s) => !s.done) || null;
+    return { total: steps.length, done, current, index: current ? steps.indexOf(current) + 1 : steps.length };
+  }
+
+  /** Ticks one step. Starting work moves the task to "in progress"; `allDone` tells the caller to finish it. */
+  function completeStep(task, stepId, ctx) {
+    const now = ctx.now || new Date().toISOString();
+    const subtasks = (task.subtasks || []).map((s) => (s.id === stepId && !s.done ? Object.assign({}, s, { done: true, doneAt: now }) : s));
+    const allDone = subtasks.length > 0 && subtasks.every((s) => s.done);
+    const fields = { subtasks };
+    if (!task.done && !allDone) fields.status = 'doing';
+    return { fields, allDone };
   }
 
   function resolveCategory(value, categories) {
@@ -336,6 +358,15 @@
       next[k] = fields[k];
     }
     if (!next.due) next.time = null;
+    // stamp when each step was finished
+    if (fields.subtasks) {
+      const before = new Map((task.subtasks || []).map((x) => [x.id, x]));
+      next.subtasks = fields.subtasks.map((x) => {
+        const prev = before.get(x.id);
+        if (!x.done) return Object.assign({}, x, { doneAt: null });
+        return Object.assign({}, x, { doneAt: x.doneAt || (prev && prev.done && prev.doneAt) || now });
+      });
+    }
     // keep status and done in step; completion itself goes through setDone()
     if (next.done) next.status = 'done';
     else if (next.status !== 'doing') next.status = 'todo';
@@ -515,10 +546,36 @@
           category: c ? c.name : '',
           color: COLOR_HEX[c ? c.color : 'slate'] || COLOR_HEX.slate,
           subtasks: subs.length ? `${subs.filter((x) => x.done).length}/${subs.length}` : '',
+          steps: subs.slice(0, 12).map((x) => ({ id: x.id, title: x.title, done: !!x.done })),
         };
       }),
     };
   }
+
+  // Ready-made step lists for common resort work.
+  const STEP_TEMPLATES = [
+    { id: 'housekeeping', name: 'ทำความสะอาดห้อง', steps: [
+      ['รับงานและเข้าห้อง', 'เคาะประตูแจ้ง Housekeeping ก่อนเข้า'],
+      ['เก็บผ้าและขยะ', 'แยกผ้าปูที่นอน ผ้าเช็ดตัว และขยะรีไซเคิล'],
+      ['ทำความสะอาดห้องน้ำ', 'สุขภัณฑ์ กระจก ฝักบัว พื้น'],
+      ['จัดเตียงและเติมของใช้', 'ผ้าปูใหม่ ของใช้ในห้องน้ำ น้ำดื่ม กาแฟ'],
+      ['ตรวจความเรียบร้อย', 'หัวหน้าแม่บ้านตรวจ แล้วแจ้งแผนกต้อนรับว่าห้องพร้อม'],
+    ] },
+    { id: 'repair', name: 'แจ้งซ่อม', steps: [
+      ['รับแจ้งปัญหา', 'จดอาการ ห้อง และเวลาที่แขกสะดวก'],
+      ['ตรวจสอบหน้างาน', 'หาสาเหตุ ประเมินอะไหล่และเวลา'],
+      ['ซ่อม', ''],
+      ['ทดสอบการใช้งาน', 'เปิดใช้จริงอย่างน้อย 10 นาที'],
+      ['แจ้งผู้แจ้งว่าเสร็จ', 'ปิดงานในระบบและแจ้งแผนกต้อนรับ'],
+    ] },
+    { id: 'vip', name: 'ต้อนรับแขก VIP', steps: [
+      ['เตรียมห้องและของต้อนรับ', 'ผลไม้ ดอกไม้ การ์ดต้อนรับ'],
+      ['ตรวจห้องก่อนแขกเข้าพัก', 'เครื่องปรับอากาศ มินิบาร์ ไฟ'],
+      ['ต้อนรับที่ล็อบบี้', 'เครื่องดื่มต้อนรับและพาไปห้อง'],
+      ['ติดตามความพึงพอใจ', 'โทรสอบถามภายใน 2 ชั่วโมงหลังเช็กอิน'],
+    ] },
+    { id: 'general', name: 'งานทั่วไป', steps: [['วางแผน', ''], ['ลงมือทำ', ''], ['ตรวจทาน', ''], ['ส่งงาน', '']] },
+  ];
 
   // Built-in sample feed so the import screen can be tried without another system.
   function demoFeed(name, today) {
@@ -530,7 +587,13 @@
       data: {
         tasks: [
           { ref: 'HK-1203', type: 'ทำความสะอาด', room: '1203', due: `${today}T11:00`, note: 'แขกเช็กเอาต์ 10:30 มีแขกใหม่เข้าพัก 14:00', priority: 'high' },
-          { ref: 'MT-0418', type: 'ซ่อมแอร์', room: '418', due: `${today}T14:30`, note: 'แอร์มีน้ำหยด แจ้งโดยแผนกต้อนรับ', priority: 'urgent', status: 'in_progress' },
+          { ref: 'MT-0418', type: 'ซ่อมแอร์', room: '418', due: `${today}T14:30`, note: 'แอร์มีน้ำหยด แจ้งโดยแผนกต้อนรับ', priority: 'urgent', status: 'in_progress',
+            steps: [
+              { title: 'รับแจ้งปัญหา', detail: 'แขกแจ้งเวลา 09:10 สะดวกให้เข้าหลัง 14:00', done: true },
+              { title: 'ตรวจสอบหน้างาน', detail: 'ท่อน้ำทิ้งอุดตัน ต้องล้างคอยล์', done: true },
+              { title: 'ล้างคอยล์และท่อน้ำทิ้ง', detail: 'ใช้เวลาประมาณ 40 นาที' },
+              { title: 'ทดสอบการใช้งาน', detail: 'เปิดใช้จริง 10 นาที ไม่มีน้ำหยด' },
+            ] },
           { ref: 'FD-0077', type: 'เตรียมของต้อนรับ VIP', room: 'V02', due: `${tmr}T15:00`, note: 'ผลไม้ + การ์ดฉลองครบรอบแต่งงาน' },
           { ref: 'HK-0907', type: 'เปลี่ยนผ้าปูที่นอน', room: '907', due: `${tmr}T10:00`, note: '' },
         ],
@@ -561,6 +624,7 @@
   return {
     VERSION, REPEATS, COLORS, COLOR_HEX, STATUSES, EVENTS, DEFAULT_CATEGORIES, ALIASES, PRESETS,
     ValidationError, uid, randomHex, pad, parseStatus, statusOf, compareTasks, buckets, nextUp, widgetPayload,
+    stepInfo, completeStep, STEP_TEMPLATES,
     partsInZone, todayIn, addDays, addMonths, weekday, isValidDate,
     parseWhen, parseTime, parseReminder, parseRepeat, parsePriority, parseDone, parseSubtasks,
     resolveCategory, normalizeFields, createTask, patchTask, nextDue, setDone,

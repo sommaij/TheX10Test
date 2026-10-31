@@ -153,3 +153,34 @@ test('buckets and widget payload summarise the day', () => {
   assert.equal(t8.color, S.COLOR_HEX.blue);
   assert.equal(t8.category, 'งาน');
 });
+
+test('steps keep details and record when each was finished', () => {
+  const t = S.createTask(S.normalizeFields({ title: 'ซ่อมแอร์', steps: [
+    { title: 'รับแจ้ง', detail: 'แขกแจ้ง 09:10', done: true },
+    'ตรวจสอบหน้างาน',
+    { name: 'ซ่อม', note: 'ล้างคอยล์' },
+  ] }, ctx), ctx);
+  assert.deepEqual(t.subtasks.map((x) => [x.title, x.detail, x.done]), [['รับแจ้ง', 'แขกแจ้ง 09:10', true], ['ตรวจสอบหน้างาน', '', false], ['ซ่อม', 'ล้างคอยล์', false]]);
+  const info = S.stepInfo(t);
+  assert.deepEqual([info.total, info.done, info.index, info.current.title], [3, 1, 2, 'ตรวจสอบหน้างาน']);
+
+  // ticking a step starts the task and stamps the time
+  const later = Object.assign({}, ctx, { now: '2026-10-31T05:00:00.000Z' });
+  const r = S.completeStep(t, t.subtasks[1].id, later);
+  assert.equal(r.allDone, false);
+  assert.equal(r.fields.status, 'doing');
+  const next = S.patchTask(t, r.fields, later);
+  assert.equal(next.status, 'doing');
+  assert.equal(next.subtasks[1].doneAt, '2026-10-31T05:00:00.000Z');
+  assert.equal(S.stepInfo(next).current.title, 'ซ่อม');
+  // un-ticking clears the time; the last step reports allDone
+  const undone = S.patchTask(next, { subtasks: next.subtasks.map((x, i) => (i === 1 ? Object.assign({}, x, { done: false }) : x)) }, later);
+  assert.equal(undone.subtasks[1].doneAt, null);
+  assert.equal(S.completeStep(next, next.subtasks[2].id, later).allDone, true);
+});
+
+test('widget payload carries steps', () => {
+  const t = S.createTask(S.normalizeFields({ title: 'x', due: 'today', steps: [{ title: 'a', done: true }, 'b'] }, ctx), ctx);
+  const w = S.widgetPayload([t], S.DEFAULT_CATEGORIES, ctx);
+  assert.deepEqual(w.tasks[0].steps.map((x) => [x.title, x.done]), [['a', true], ['b', false]]);
+});

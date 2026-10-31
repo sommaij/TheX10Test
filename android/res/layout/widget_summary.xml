@@ -172,4 +172,39 @@
             android:textColor="@color/ink"
             android:textSize="12.5sp" />
     </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/step_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/next_step"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="7"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textColor="@color/ink2"
+            android:textSize="11.5sp"
+            android:textStyle="bold" />
+
+        <ProgressBar
+            android:id="@+id/next_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="0dp"
+            android:layout_height="4dp"
+            android:layout_weight="3"
+            android:layout_marginLeft="10dp"
+            android:minHeight="4dp"
+            android:maxHeight="4dp"
+            android:indeterminate="false"
+            android:max="100"
+            android:progress="0"
+            android:progressDrawable="@drawable/step_progress" />
+    </LinearLayout>
 </LinearLayout>

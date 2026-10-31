@@ -802,3 +802,98 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- steps: progress bar, task detail stepper, step editor ---------- */
+.step-bar { display: flex; gap: 3px; width: 100%; max-width: 220px; }
+.step-bar i { flex: 1; height: 5px; border-radius: 3px; background: var(--surface-2); }
+.step-bar i.is-done { background: var(--ok); }
+.step-bar i.is-cur { background: var(--doing); }
+.step-bar.big { max-width: none; gap: 4px; }
+.step-bar.big i { height: 8px; border-radius: 4px; }
+.task-step { display: flex; flex-direction: column; gap: 4px; width: 100%; margin: 2px 0 1px; }
+.task-step-t { font-size: 12.5px; font-weight: 600; color: var(--ink-2); overflow-wrap: anywhere; }
+.task.st-doing .task-step-t { color: var(--doing); }
+.task.st-done .task-step { opacity: 0.6; }
+.next-step { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 13px; font-weight: 600; color: var(--doing); margin: 2px 0; }
+.next:not(.is-doing) .next-step { color: var(--ink-2); }
+
+.detail-sheet { padding-bottom: 0; }
+.dt-head { align-items: center; }
+.dt-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1; min-width: 0; }
+.dt-status {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; background: var(--st-soft); color: var(--st);
+}
+.dt-status .i { width: 15px; height: 15px; stroke-width: 2.3; }
+.dt-status.st-doing .i { fill: currentColor; }
+.dt-status.st-todo { --st: var(--accent); --st-soft: var(--accent-soft); }
+.detail { display: flex; flex-direction: column; gap: 14px; padding-bottom: 16px; }
+.dt-title { font-size: 22px; line-height: 1.35; overflow-wrap: anywhere; }
+.dt-title.is-done { color: var(--ink-3); text-decoration: line-through; }
+.dt-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13.5px; color: var(--ink-2); }
+.dt-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.dt-meta .i { width: 16px; height: 16px; }
+.dt-meta .late { color: var(--danger); font-weight: 600; }
+.dt-meta .prio-1 { color: var(--warn); }
+.dt-meta .prio-2 { color: var(--danger); font-weight: 600; }
+.dt-steps { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--surface-2); }
+.dt-steps-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dt-steps-head strong { font-family: var(--font-display); font-weight: 500; font-size: 16px; }
+.dt-steps-head span { font-size: 13px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.empty-steps { align-items: flex-start; }
+.empty-steps p { font-size: 14px; color: var(--ink-2); }
+
+/* vertical stepper: done ✓ / current (numbered, amber) / waiting (numbered, grey) */
+.stepper { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; }
+.sx { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding-bottom: 14px; }
+.sx:last-child { padding-bottom: 0; }
+.sx::before { content: ""; position: absolute; left: 16px; top: 34px; bottom: 0; width: 2px; background: var(--line); border-radius: 2px; }
+.sx:last-child::before { display: none; }
+.sx.is-done::before { background: var(--ok); }
+.sx-dot {
+  width: 34px; height: 34px; border-radius: 50%; padding: 0; display: grid; place-items: center;
+  font: 700 14px/1 var(--font-body); font-variant-numeric: tabular-nums;
+  border: 2px solid var(--line); background: var(--surface); color: var(--ink-3);
+}
+.sx-dot .i { width: 17px; height: 17px; stroke-width: 3; }
+.sx.is-done .sx-dot { background: var(--ok); border-color: var(--ok); color: #ffffff; }
+.sx.is-cur .sx-dot { border-color: var(--doing); background: var(--doing-soft); color: var(--doing); box-shadow: 0 0 0 4px color-mix(in srgb, var(--doing) 18%, transparent); }
+.sx-body { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding-top: 5px; }
+.sx-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; width: 100%; }
+.sx-title { font-weight: 600; font-size: 15px; color: var(--ink); overflow-wrap: anywhere; }
+.sx.is-done .sx-title { color: var(--ink-2); }
+.sx-time { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; color: var(--ok); }
+.sx-time .i { width: 13px; height: 13px; stroke-width: 3; }
+.sx-tag { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--doing-soft); color: var(--doing); }
+.sx-wait { font-size: 12px; color: var(--ink-3); }
+.sx-detail { font-size: 13.5px; color: var(--ink-2); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.sx-body .btn { margin-top: 4px; }
+.dt-notes { display: flex; flex-direction: column; gap: 4px; }
+.dt-notes p { font-size: 14px; white-space: pre-line; overflow-wrap: anywhere; }
+.dt-stamp { font-size: 12px; color: var(--ink-3); }
+
+.steps-edit { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; counter-reset: step; }
+.steps-edit li {
+  counter-increment: step; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start;
+  padding: 8px; border-radius: 14px; background: var(--surface-2);
+}
+.steps-edit li::before {
+  content: counter(step); position: absolute; opacity: 0;
+}
+.steps-edit input[type="checkbox"] { width: 22px; height: 22px; margin: 11px 2px 0 4px; accent-color: var(--ok); }
+.se-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.editor .se-main input.se-title { min-height: 40px; background: var(--surface); font-weight: 600; }
+.editor .se-main textarea.se-detail { min-height: 34px; padding: 6px 12px; background: transparent; font-size: 13.5px; color: var(--ink-2); resize: vertical; }
+.se-actions { display: flex; flex-direction: column; gap: 2px; }
+.steps-edit li:has(input[type="checkbox"]:checked) .se-title { text-decoration: line-through; color: var(--ink-3); }
+.editor select.template-pick { min-height: 40px; font-size: 14px; color: var(--accent); font-weight: 600; background: var(--accent-soft); }
+
+.hw-bar { display: block; height: 4px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 3px; }
+.hw-bar span { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
+.hw-step { display: flex; align-items: center; gap: 10px; margin-top: -4px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); min-width: 0; }
+.hw-step > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hw-step .hw-bar { width: 30%; flex-shrink: 0; margin-top: 0; }
+/* a task not started yet: its next step is "up next", not "in progress" */
+.step-bar.st-todo i.is-cur { background: color-mix(in srgb, var(--accent) 45%, var(--surface-2)); }
+.stepper.st-todo .sx.is-cur .sx-dot { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
+.stepper.st-todo .sx-tag { background: var(--accent-soft); color: var(--accent); }

@@ -40,6 +40,10 @@ final class ServerSync {
         return request(c, "POST", "/api/v1/tasks/" + android.net.Uri.encode(id) + "/complete") != null;
     }
 
+    static boolean completeStep(Context c, String id, String stepId) {
+        return request(c, "POST", "/api/v1/tasks/" + android.net.Uri.encode(id) + "/steps/" + android.net.Uri.encode(stepId) + "/complete") != null;
+    }
+
     private static String request(Context c, String method, String path) {
         String[] server = WidgetData.server(c);
         if (server == null) return null;

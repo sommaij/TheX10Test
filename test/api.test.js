@@ -106,6 +106,20 @@ test('API: repeating task spawns next occurrence on the server', async (t) => {
   assert.equal((await call('GET', '/api/v1/tasks/t_repeat1@2099-01-02')).status, 404);
 });
 
+test('API: complete steps one by one; the last step finishes the task', async (t) => {
+  const { app, call } = await start();
+  t.after(() => app.close());
+  const c = await call('POST', '/api/v1/tasks', { title: 'ทำความสะอาดห้อง 1203', steps: ['เก็บผ้า', { title: 'ห้องน้ำ', detail: 'สุขภัณฑ์ กระจก' }] });
+  const [s1, s2] = c.body.task.subtasks;
+  assert.equal(s2.detail, 'สุขภัณฑ์ กระจก');
+  const a = await call('POST', `/api/v1/tasks/${c.body.task.id}/steps/${s1.id}/complete`);
+  assert.deepEqual([a.body.task.status, a.body.task.done], ['doing', false]);
+  assert.ok(a.body.task.subtasks[0].doneAt);
+  const b = await call('POST', `/api/v1/tasks/${c.body.task.id}/steps/${s2.id}/complete`);
+  assert.deepEqual([b.body.task.status, b.body.task.done], ['done', true]);
+  assert.equal((await call('POST', `/api/v1/tasks/${c.body.task.id}/steps/nope/complete`)).status, 404);
+});
+
 test('API: bulk import and data persists across restarts', async (t) => {
   const { app, call, dataDir } = await start();
   const r = await call('POST', '/api/v1/tasks', [{ title: 'หนึ่ง' }, { title: '' }, { name: 'สาม', category: 'ฝ่ายช่าง' }]);

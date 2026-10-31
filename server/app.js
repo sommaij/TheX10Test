@@ -158,6 +158,11 @@ function createApp(options = {}) {
     if (!task) throw new HttpError(404, 'not_found', 'Task not found');
     return { task, spawned: task.spawnedId ? store.getTask(task.spawnedId) : null };
   });
+  route('POST', '/api/v1/tasks/:id/steps/:stepId/complete', 'app', ({ params }) => {
+    const task = store.completeStep(params.id, params.stepId);
+    if (!task) throw new HttpError(404, 'not_found', 'Task or step not found');
+    return { task, spawned: task.done && task.spawnedId ? store.getTask(task.spawnedId) : null };
+  });
   route('DELETE', '/api/v1/tasks/:id', 'app', ({ params }) => {
     const task = store.deleteTask(params.id);
     if (!task) throw new HttpError(404, 'not_found', 'Task not found');

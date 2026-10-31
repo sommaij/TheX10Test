@@ -11,9 +11,12 @@ public class WidgetActionReceiver extends BroadcastReceiver {
     public void onReceive(final Context c, Intent intent) {
         String action = intent.getAction();
         Uri data = intent.getData();
-        if (Widgets.ACTION_DONE.equals(action) && data != null && data.getPath() != null) {
-            final String id = Uri.decode(data.getPath().replaceFirst("^/", ""));
-            WidgetData.markDone(c, id);
+        if (Widgets.ACTION_DONE.equals(action) && data != null && data.getPathSegments().size() > 0) {
+            // x10://done/<task>  or  x10://step/<task>/<step>
+            final String id = data.getPathSegments().get(0);
+            final String stepId = "step".equals(data.getHost()) && data.getPathSegments().size() > 1 ? data.getPathSegments().get(1) : null;
+            if (stepId != null) WidgetData.markStep(c, id, stepId);
+            else WidgetData.markDone(c, id);
             Widgets.updateAll(c);
             if (WidgetData.server(c) != null) {
                 final PendingResult pending = goAsync();
@@ -21,7 +24,8 @@ public class WidgetActionReceiver extends BroadcastReceiver {
                     @Override
                     public void run() {
                         try {
-                            ServerSync.complete(c, id);
+                            if (stepId != null) ServerSync.completeStep(c, id, stepId);
+                            else ServerSync.complete(c, id);
                             ServerSync.refresh(c);
                             Widgets.updateAll(c);
                         } finally {

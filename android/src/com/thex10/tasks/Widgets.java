@@ -69,12 +69,24 @@ final class Widgets {
             v.setTextColor(R.id.next_label, c.getColor("doing".equals(next.status) ? R.color.doing : R.color.accent));
             v.setTextViewText(R.id.next_title, next.title);
             v.setOnClickPendingIntent(R.id.next_row, open(c, "task/" + Uri.encode(next.id)));
+            WidgetData.Step step = next.currentStep();
+            if (step != null) {
+                v.setViewVisibility(R.id.step_row, View.VISIBLE);
+                v.setTextViewText(R.id.next_step, "ขั้น " + next.currentIndex() + "/" + next.steps.size() + " · " + step.title);
+                v.setProgressBar(R.id.next_progress, 100, next.stepsDone() * 100 / next.steps.size(), false);
+                v.setOnClickPendingIntent(R.id.step_row, open(c, "task/" + Uri.encode(next.id)));
+            }
         }
 
         // Small widget: drop the next-task line, and the tile labels when narrow.
         int h = options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
         int w = options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
-        v.setViewVisibility(R.id.next_row, h > 0 && h < 100 ? View.GONE : View.VISIBLE);
+        if (h > 0 && h < 100) {
+            v.setViewVisibility(R.id.next_row, View.GONE);
+            v.setViewVisibility(R.id.step_row, View.GONE);
+        } else if (h > 0 && h < 130) {
+            v.setViewVisibility(R.id.step_row, View.GONE);
+        }
         int labels = w > 0 && w < 210 ? View.GONE : View.VISIBLE;
         v.setViewVisibility(R.id.label_overdue, labels);
         v.setViewVisibility(R.id.label_today, labels);
@@ -130,7 +142,15 @@ final class Widgets {
             r.setViewVisibility(R.id.row_flag, View.VISIBLE);
             r.setInt(R.id.row_flag, "setColorFilter", c.getColor(t.priority > 1 ? R.color.overdue : R.color.warn));
         }
-        r.setOnClickPendingIntent(R.id.row_check, broadcast(c, ACTION_DONE, "done/" + Uri.encode(t.id)));
+        WidgetData.Step step = t.currentStep();
+        if (step != null) {
+            r.setViewVisibility(R.id.row_progress, View.VISIBLE);
+            r.setProgressBar(R.id.row_progress, 100, t.stepsDone() * 100 / t.steps.size(), false);
+        }
+        // With steps, the tick finishes the current step; the last step finishes the task.
+        r.setOnClickPendingIntent(R.id.row_check, step != null
+                ? broadcast(c, ACTION_DONE, "step/" + Uri.encode(t.id) + "/" + Uri.encode(step.id))
+                : broadcast(c, ACTION_DONE, "done/" + Uri.encode(t.id)));
         r.setOnClickPendingIntent(R.id.row_body, open(c, "task/" + Uri.encode(t.id)));
         return r;
     }
@@ -140,10 +160,11 @@ final class Widgets {
         SpannableStringBuilder s = new SpannableStringBuilder();
         if ("doing".equals(t.status)) status(s, "กำลังทำ", c.getColor(R.color.doing));
         else if (t.due != null && t.due.compareTo(today) < 0) status(s, "เลยกำหนด", c.getColor(R.color.overdue));
+        WidgetData.Step step = t.currentStep();
+        if (step != null) part(s, "ขั้น " + t.currentIndex() + "/" + t.steps.size() + " " + step.title);
         if (t.due != null && !t.due.equals(today)) part(s, dayLabel(t.due, today));
         if (t.time != null) part(s, t.time);
         if (!t.category.isEmpty()) part(s, t.category);
-        if (!t.subtasks.isEmpty()) part(s, "งานย่อย " + t.subtasks);
         return s;
     }
 
