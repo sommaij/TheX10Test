@@ -1,0 +1,18 @@
+{
+  "name": "x10-tasks",
+  "version": "1.0.0",
+  "description": "X10 Tasks — แอปจัดการงานประจำวันสำหรับมือถือ (PWA) พร้อม REST API, webhook และการดึงงานจาก API ของแอปอื่น",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js",
+    "build:demo": "node scripts/build-demo.js",
+    "icons": "node scripts/make-icons.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}
