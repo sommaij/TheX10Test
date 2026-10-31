@@ -16,7 +16,7 @@ fs.writeFileSync(page, `<!doctype html><html><head><meta charset="utf-8"><meta n
   const p = await ctx.newPage();
   await p.goto('file://' + page + '#options');
   await p.waitForTimeout(1200);
-  await p.addStyleTag({ content: '.wallpaper{background:none!important;padding:0!important}.hw{box-shadow:none!important}#toast-root{display:none}' });
+  await p.addStyleTag({ content: '.wallpaper{background:none!important;padding:0!important}.hw{box-shadow:none!important}#toast-root{display:none!important}' });
   const out = path.join(root, 'android', 'res', 'drawable-nodpi');
   fs.mkdirSync(out, { recursive: true });
   await p.locator('.hw-summary').screenshot({ path: path.join(out, 'widget_preview_summary.png'), omitBackground: true });

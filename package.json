@@ -1,6 +1,6 @@
 {
   "name": "x10-tasks",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "X10 Tasks — แอปจัดการงานประจำวันสำหรับมือถือ (PWA + แอป Android พร้อมวิดเจ็ตหน้าจอโฮม) พร้อม REST API, webhook และการดึงงานจาก API ของแอปอื่น",
   "private": true,
   "license": "UNLICENSED",

@@ -19,8 +19,8 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingTop="5dp"
-        android:paddingBottom="5dp">
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp">
 
         <ImageView
             android:id="@+id/row_check"
@@ -45,7 +45,7 @@
                 android:singleLine="true"
                 android:ellipsize="end"
                 android:textColor="@color/ink"
-                android:textSize="13.5sp" />
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/row_meta"

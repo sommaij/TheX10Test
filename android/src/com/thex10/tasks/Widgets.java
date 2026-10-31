@@ -5,8 +5,8 @@ import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
@@ -28,6 +28,15 @@ final class Widgets {
     private static final int FLAGS = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
     private static final String[] WD = {"อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."};
     private static final String[] MON = {"ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."};
+    private static final String[] WD_FULL = {"วันอาทิตย์", "วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์"};
+    private static final String[] MON_FULL = {"มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"};
+    private static final int DEFAULT_ACCENT = 0xFF0A7A70;
+    // status colours that read well on the dark gradient card
+    private static final int ON_CARD_OVERDUE = 0xFFFFA594;
+    private static final int ON_CARD_TODAY = 0xFFFFFFFF;
+    private static final int ON_CARD_DOING = 0xFFFFC65C;
+    private static final int ON_CARD_DONE = 0xFF8FE3B4;
+    private static final int ON_CARD_MUTED = 0x8CFFFFFF;
 
     private Widgets() {}
 
@@ -42,21 +51,45 @@ final class Widgets {
         }
     }
 
-    /** {accent, ink on accent, soft} for the current light/dark mode, or null to keep the built-in colours. */
-    private static int[] accent(Context c, WidgetData d) {
-        boolean night = (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        return night ? d.accentDark : d.accentLight;
+    private static boolean night(Context c) {
+        return (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
 
-    /** Tints a view's rounded background. Remote tinting needs Android 12; older phones keep the default colour. */
-    private static void tintBackground(RemoteViews v, int id, int color) {
-        if (Build.VERSION.SDK_INT >= 31) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(color));
+    /** The colour the card is painted in: the user's app colour (light variant), or the default lagoon. */
+    private static int cardColor(WidgetData d) {
+        return d.accentLight != null ? d.accentLight[0] : DEFAULT_ACCENT;
     }
 
-    private static void applyAccent(RemoteViews v, int[] a, int addButton) {
-        if (a == null || Build.VERSION.SDK_INT < 31) return;
-        tintBackground(v, addButton, a[0]);
-        v.setInt(addButton, "setColorFilter", a[1]);
+    /**
+     * Paints the gradient card into an ImageView. Size comes from the widget's options (portrait: min width × max
+     * height), capped so the bitmap stays small. fixedHeightDp > 0 paints a header strip of that height instead.
+     */
+    private static void paintCard(Context c, RemoteViews v, int imageId, int rootId, Bundle o, int defW, int defH, int fixedHeightDp, boolean roundBottom, int color) {
+        try {
+            float density = c.getResources().getDisplayMetrics().density;
+            int wdp = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+            int hdp = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+            if (wdp <= 0) wdp = defW;
+            if (hdp <= 0) hdp = defH;
+            if (fixedHeightDp > 0) hdp = fixedHeightDp;
+            float scale = Math.min(density, 900f / Math.max(wdp, hdp));
+            Bitmap bmp = WidgetArt.card(Math.round(wdp * scale), Math.round(hdp * scale), 24 * scale, color, night(c), roundBottom);
+            v.setImageViewBitmap(imageId, bmp);
+            v.setInt(rootId, "setBackgroundResource", 0);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // keep the plain gradient background from the layout
+        }
+    }
+
+    private static void ring(RemoteViews v, int done, int total) {
+        v.setProgressBar(R.id.ring, 100, total == 0 ? 0 : done * 100 / total, false);
+        v.setTextViewText(R.id.ring_text, done + "/" + total);
+    }
+
+    private static void tile(RemoteViews v, int num, int dot, int count, int color) {
+        v.setTextViewText(num, String.valueOf(count));
+        v.setTextColor(num, count == 0 ? ON_CARD_MUTED : 0xFFFFFFFF);
+        v.setInt(dot, "setColorFilter", count == 0 ? ON_CARD_MUTED : color);
     }
 
     static RemoteViews summary(Context c, Bundle options) {
@@ -64,27 +97,21 @@ final class Widgets {
         WidgetData data = WidgetData.load(c);
         WidgetData.Buckets b = data.buckets(today);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_summary);
-        int[] a = accent(c, data);
-        if (a != null) {
-            v.setTextColor(R.id.brand, a[0]);
-            v.setTextColor(R.id.num_today, a[0]);
-            tintBackground(v, R.id.tile_today, a[2]);
-        }
-        applyAccent(v, a, R.id.btn_add);
+        int color = cardColor(data);
+        paintCard(c, v, R.id.bg, R.id.root, options, 320, 160, 0, true, color);
+        v.setInt(R.id.btn_add, "setColorFilter", color);
 
         int dueToday = b.today.size() + b.doneToday;
         for (WidgetData.Task t : b.doing) if (today.equals(t.due)) dueToday++;
-        v.setTextViewText(R.id.date, dateLabel());
-        v.setTextViewText(R.id.brand, "X10 Tasks · เสร็จ " + b.doneToday + "/" + dueToday);
-        v.setTextViewText(R.id.num_overdue, String.valueOf(b.overdue.size()));
-        v.setTextViewText(R.id.num_today, String.valueOf(b.today.size()));
-        v.setTextViewText(R.id.num_doing, String.valueOf(b.doing.size()));
-        v.setTextViewText(R.id.num_done, String.valueOf(b.doneToday));
-        int ink3 = c.getColor(R.color.ink3);
-        if (b.overdue.isEmpty()) v.setTextColor(R.id.num_overdue, ink3);
-        if (b.today.isEmpty()) v.setTextColor(R.id.num_today, ink3);
-        if (b.doing.isEmpty()) v.setTextColor(R.id.num_doing, ink3);
-        if (b.doneToday == 0) v.setTextColor(R.id.num_done, ink3);
+        Calendar k = Calendar.getInstance();
+        v.setTextViewText(R.id.date_num, String.valueOf(k.get(Calendar.DAY_OF_MONTH)));
+        v.setTextViewText(R.id.date_wd, WD_FULL[k.get(Calendar.DAY_OF_WEEK) - 1]);
+        v.setTextViewText(R.id.date_my, MON_FULL[k.get(Calendar.MONTH)] + " " + (k.get(Calendar.YEAR) + 543));
+        ring(v, b.doneToday, dueToday);
+        tile(v, R.id.num_overdue, R.id.dot_overdue, b.overdue.size(), ON_CARD_OVERDUE);
+        tile(v, R.id.num_today, R.id.dot_today, b.today.size(), ON_CARD_TODAY);
+        tile(v, R.id.num_doing, R.id.dot_doing, b.doing.size(), ON_CARD_DOING);
+        tile(v, R.id.num_done, R.id.dot_done, b.doneToday, ON_CARD_DONE);
 
         WidgetData.Task next = b.next();
         if (next == null) {
@@ -94,7 +121,7 @@ final class Widgets {
             String label = "doing".equals(next.status) ? "กำลังทำ" : "ถัดไป";
             if (next.time != null) label += " " + next.time;
             v.setTextViewText(R.id.next_label, label);
-            v.setTextColor(R.id.next_label, "doing".equals(next.status) ? c.getColor(R.color.doing) : a != null ? a[0] : c.getColor(R.color.accent));
+            v.setTextColor(R.id.next_label, "doing".equals(next.status) ? ON_CARD_DOING : 0xD9FFFFFF);
             v.setTextViewText(R.id.next_title, next.title);
             v.setOnClickPendingIntent(R.id.next_row, open(c, "task/" + Uri.encode(next.id)));
             WidgetData.Step step = next.currentStep();
@@ -115,6 +142,7 @@ final class Widgets {
         } else if (h > 0 && h < 130) {
             v.setViewVisibility(R.id.step_row, View.GONE);
         }
+        if (w > 0 && w < 280) v.setViewVisibility(R.id.btn_refresh, View.GONE);
         int labels = w > 0 && w < 210 ? View.GONE : View.VISIBLE;
         v.setViewVisibility(R.id.label_overdue, labels);
         v.setViewVisibility(R.id.label_today, labels);
@@ -136,18 +164,20 @@ final class Widgets {
         WidgetData data = WidgetData.load(c);
         WidgetData.Buckets b = data.buckets(today);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_list);
-        int[] a = accent(c, data);
-        if (a != null) {
-            v.setTextColor(R.id.count_today, a[0]);
-            tintBackground(v, R.id.count_today, a[2]);
-        }
-        applyAccent(v, a, R.id.btn_add);
+        int color = cardColor(data);
+        paintCard(c, v, R.id.head_bg, R.id.head, options, 320, 250, 70, false, color);
+        v.setInt(R.id.btn_add, "setColorFilter", color);
+        int dueToday = b.today.size() + b.doneToday;
+        for (WidgetData.Task t : b.doing) if (today.equals(t.due)) dueToday++;
+        ring(v, b.doneToday, dueToday);
+        int w = options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+        if (w > 0 && w < 280) v.setViewVisibility(R.id.btn_refresh, View.GONE);
         v.setTextViewText(R.id.count_overdue, "เลย " + b.overdue.size());
         v.setTextViewText(R.id.count_today, "วันนี้ " + b.today.size());
         v.setTextViewText(R.id.count_doing, "ทำอยู่ " + b.doing.size());
 
         int h = options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
-        int max = h > 0 ? Math.max(2, Math.min(8, (h - 80) / 44)) : 4;
+        int max = h > 0 ? Math.max(2, Math.min(8, (h - 96) / 48)) : 4;
         List<WidgetData.Task> rows = b.urgent();
         v.removeAllViews(R.id.rows);
         for (int i = 0; i < Math.min(max, rows.size()); i++) v.addView(R.id.rows, row(c, rows.get(i), today, i == 0));

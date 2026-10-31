@@ -1,5 +1,5 @@
 /* X10 Tasks service worker: offline app shell + notification clicks. */
-const CACHE = 'x10-shell-v3';
+const CACHE = 'x10-shell-v4';
 const FONTS = 'x10-fonts-v1';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/shared.js', 'js/sheets-script.js', 'js/motion.js', 'js/app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 

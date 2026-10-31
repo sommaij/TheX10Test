@@ -1,5 +1,6 @@
 /*
- * X10 Tasks — motion, kept quiet: rows glide into place, numbers roll, swipe a row, drag a sheet down to close.
+ * X10 Tasks — motion with depth, kept quiet: cards tilt with the phone (2.5D parallax and light), rows glide and fold,
+ * pages come forward from a little depth, numbers roll, swipe a row, drag a sheet down to close.
  * Short ease-out moves only (no bounce). Skipped when the phone asks for reduced motion or the app's setting is off.
  */
 (function (root) {
@@ -13,6 +14,101 @@
   function setEnabled(v) {
     enabled = v !== false;
     doc.documentElement.classList.toggle('no-motion', !enabled);
+    if (!enabled) resetTilt();
+  }
+
+  // ---------- 2.5D: cards that tilt with the phone ----------
+  // Elements with [data-depth] get --tx / --ty (-1…1); CSS turns them into a small rotation, parallax between layers
+  // and a moving highlight. The phone's gyroscope drives it; with a mouse, the pointer does.
+  const tilt = { x: 0, y: 0, tx: 0, ty: 0, base: null, raf: 0, sensorAt: 0, started: false };
+  const clamp = (v) => Math.max(-1, Math.min(1, v));
+  function paintTilt() {
+    tilt.raf = 0;
+    tilt.x += (tilt.tx - tilt.x) * 0.14;
+    tilt.y += (tilt.ty - tilt.y) * 0.14;
+    const x = tilt.x.toFixed(3);
+    const y = tilt.y.toFixed(3);
+    doc.querySelectorAll('[data-depth]').forEach((el) => {
+      el.style.setProperty('--tx', x);
+      el.style.setProperty('--ty', y);
+    });
+    if (Math.abs(tilt.tx - tilt.x) > 0.002 || Math.abs(tilt.ty - tilt.y) > 0.002) tilt.raf = requestAnimationFrame(paintTilt);
+  }
+  const kickTilt = () => {
+    if (on() && !tilt.raf) tilt.raf = requestAnimationFrame(paintTilt);
+  };
+  // Re-applies the current tilt after a re-render created new [data-depth] elements.
+  function retilt() {
+    if (!on() || (!tilt.x && !tilt.y)) return;
+    doc.querySelectorAll('[data-depth]').forEach((el) => {
+      el.style.setProperty('--tx', tilt.x.toFixed(3));
+      el.style.setProperty('--ty', tilt.y.toFixed(3));
+    });
+  }
+  function resetTilt() {
+    tilt.tx = tilt.ty = tilt.x = tilt.y = 0;
+    doc.querySelectorAll('[data-depth]').forEach((el) => {
+      el.style.removeProperty('--tx');
+      el.style.removeProperty('--ty');
+    });
+  }
+  function startTilt() {
+    if (tilt.started) return;
+    tilt.started = true;
+    root.addEventListener('deviceorientation', (e) => {
+      if (e.beta === null || e.gamma === null || !on()) return;
+      tilt.sensorAt = Date.now();
+      if (!tilt.base) tilt.base = { b: e.beta, g: e.gamma };
+      // follow how the phone is being held, slowly, so the card settles flat again
+      tilt.base.b += (e.beta - tilt.base.b) * 0.015;
+      tilt.base.g += (e.gamma - tilt.base.g) * 0.015;
+      tilt.tx = clamp((e.beta - tilt.base.b) / 14);
+      tilt.ty = clamp((e.gamma - tilt.base.g) / 14);
+      kickTilt();
+    });
+    doc.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse' || Date.now() - tilt.sensorAt < 3000 || !on()) return;
+      const el = e.target.closest && e.target.closest('[data-depth]');
+      if (!el) {
+        if (tilt.tx || tilt.ty) {
+          tilt.tx = tilt.ty = 0;
+          kickTilt();
+        }
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      tilt.tx = clamp(((e.clientY - r.top) / r.height - 0.5) * -2);
+      tilt.ty = clamp(((e.clientX - r.left) / r.width - 0.5) * 2);
+      kickTilt();
+    }, { passive: true });
+  }
+
+  // ---------- 2.5D: cards lean toward the finger while pressed ----------
+  function pressTilt(selector) {
+    let cur = null;
+    const release = () => {
+      if (!cur) return;
+      const el = cur;
+      cur = null;
+      el.style.transition = `transform 0.45s ${EASE}`;
+      el.style.transform = '';
+      setTimeout(() => (el.style.transition = ''), 460);
+    };
+    doc.addEventListener('pointerdown', (e) => {
+      if (!on() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const el = e.target.closest(selector);
+      if (!el) return;
+      cur = el;
+      const r = el.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width - 0.5;
+      const py = (e.clientY - r.top) / r.height - 0.5;
+      const k = Math.min(1, 220 / Math.max(r.width, 1)); // big cards lean less
+      el.style.transition = `transform 0.16s ${EASE}`;
+      el.style.transform = `perspective(700px) rotateX(${(-py * 9 * k).toFixed(2)}deg) rotateY(${(px * 9 * k).toFixed(2)}deg) scale(0.985)`;
+    }, { passive: true });
+    doc.addEventListener('pointerup', release);
+    doc.addEventListener('pointercancel', release);
+    doc.addEventListener('pointerleave', release);
   }
 
   // ---------- lists: FLIP (rows glide to their new place instead of jumping) ----------
@@ -57,15 +153,30 @@
   }
 
   // Elements slide up one after another (first view of a page or list).
-  function enter(container, selector, { max = 10, step = 22, dist = 6, duration = 280 } = {}) {
+  // Elements come forward one after another from a little depth (first view of a page or list).
+  function enter(container, selector, { max = 10, step = 26, dist = 10, duration = 420, tip = 9 } = {}) {
     if (!on() || !container) return;
     const vh = root.innerHeight;
     let i = 0;
     for (const el of container.querySelectorAll(selector)) {
       if (i >= max || el.getBoundingClientRect().top > vh) break;
-      el.animate([{ opacity: 0, transform: `translateY(${dist}px)` }, { opacity: 1, transform: 'none' }], { duration, delay: i * step, easing: EASE, fill: 'backwards' });
+      el.style.transformOrigin = '50% 0';
+      el.animate([
+        { opacity: 0, transform: `perspective(900px) translate3d(0, ${dist}px, -40px) rotateX(${-tip}deg)` },
+        { opacity: 1, transform: 'none' },
+      ], { duration, delay: i * step, easing: EASE, fill: 'backwards' });
       i++;
     }
+  }
+
+  // A finished row tips back and away before the list closes the gap.
+  function fold(el, duration = 240) {
+    if (!on() || !el) return null;
+    el.style.transformOrigin = '50% 0';
+    return el.animate([
+      { transform: 'perspective(700px) rotateX(0deg)', opacity: 1 },
+      { transform: 'perspective(700px) translate3d(0, -4px, -30px) rotateX(-72deg)', opacity: 0 },
+    ], { duration, easing: 'cubic-bezier(0.5, 0, 0.75, 0.4)', fill: 'forwards' });
   }
 
   // ---------- numbers ----------
@@ -226,5 +337,5 @@
     rootEl.addEventListener('pointercancel', end);
   }
 
-  root.X10Motion = { setEnabled, on, measure, flip, enter, countUp, swipeRows, sheetDrag, EASE };
+  root.X10Motion = { setEnabled, on, measure, flip, enter, fold, countUp, swipeRows, sheetDrag, startTilt, retilt, pressTilt, EASE };
 })(typeof self !== 'undefined' ? self : this);

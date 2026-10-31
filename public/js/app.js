@@ -5,7 +5,7 @@
   const DEMO = !!window.X10_DEMO;
   // Present when running inside the X10 Tasks Android app (home-screen widgets, native reminders).
   const NATIVE = window.X10Native || null;
-  const M = window.X10Motion || { setEnabled() {}, on: () => false, measure: () => null, flip() {}, enter() {}, countUp: (n, f, t) => n && (n.textContent = t), swipeRows() {}, sheetDrag() {} };
+  const M = window.X10Motion || { setEnabled() {}, on: () => false, measure: () => null, flip() {}, enter() {}, fold: () => null, countUp: (n, f, t) => n && (n.textContent = t), swipeRows() {}, sheetDrag() {}, startTilt() {}, retilt() {}, pressTilt() {} };
   const STORAGE_KEY = 'x10tasks.v1';
   // The page's own web address, when it is served from a web server (not the Android app or the demo).
   const WEB_ORIGIN = !DEMO && /^https?:$/.test(location.protocol) ? location.origin : '';
@@ -817,6 +817,11 @@
     root.hidden = false;
     document.body.classList.add('locked');
     root.classList.add('entering');
+    if (M.on()) {
+      const app = $('#app');
+      app.style.setProperty('--recede-y', `${window.scrollY + window.innerHeight / 2 - app.offsetTop}px`);
+      document.body.classList.add('sheet-open');
+    }
     clearTimeout(openSheet.t);
     openSheet.t = setTimeout(() => root.classList.remove('entering'), 700);
     requestAnimationFrame(() => root.classList.add('open'));
@@ -831,7 +836,7 @@
     ui.detailId = null;
     if (root.hidden) return;
     root.classList.remove('open', 'entering');
-    document.body.classList.remove('locked');
+    document.body.classList.remove('locked', 'sheet-open');
     setTimeout(() => {
       if (!root.classList.contains('open')) {
         root.hidden = true;
@@ -925,7 +930,9 @@
   // Today's ring just closed: one quiet glow around it.
   function dayCleared() {
     const ring = $('.ring');
-    if (ring && M.on()) ring.animate([{ boxShadow: '0 0 0 0 rgb(255 255 255 / 0.45)' }, { boxShadow: '0 0 0 12px rgb(255 255 255 / 0)' }], { duration: 900, easing: M.EASE });
+    if (!ring || !M.on()) return;
+    ring.animate([{ transform: 'perspective(400px) rotateY(0deg)' }, { transform: 'perspective(400px) rotateY(360deg)' }], { duration: 1100, easing: 'cubic-bezier(0.45, 0, 0.2, 1)' });
+    ring.animate([{ boxShadow: '0 0 0 0 rgb(255 255 255 / 0.45)' }, { boxShadow: '0 0 0 14px rgb(255 255 255 / 0)' }], { duration: 1000, delay: 900, easing: M.EASE, fill: 'backwards' });
   }
   // Hero numbers before a re-render, so the ring and the tiles can roll to their new values.
   function heroNumbers() {
@@ -972,13 +979,14 @@
     if (finishing) {
       haptic('success');
       ui.cheerAt = Date.now();
+      if (row && row.classList.contains('task') && delay === undefined && M.on()) setTimeout(() => M.fold(row.querySelector('.task-row')), 300);
     }
     setTimeout(() => {
       const r = setTaskDone(id, finishing);
       if (r && r.task.done) {
         toast(r.spawn ? `เสร็จแล้ว · ครั้งถัดไป ${dueLabel(r.spawn.due)}` : 'เสร็จแล้ว', { action: 'เลิกทำ', onAction: () => setTaskStatus(id, before) });
       }
-    }, delay !== undefined ? delay : M.on() ? (finishing ? 340 : 140) : 0);
+    }, delay !== undefined ? delay : M.on() ? (finishing ? 540 : 160) : 0);
   }
 
   // ---------- task list ----------
@@ -1092,7 +1100,7 @@
     ui.listKey = key;
     const paint = (html) => {
       el.innerHTML = html;
-      if (fresh) M.enter(el, '.banner, .filter-bar, .tgroup-head, .task, .empty', { max: 10, step: 18 });
+      if (fresh) M.enter(el, '.banner, .filter-bar, .tgroup-head, .task, .empty', { max: 10, step: 24 });
       else M.flip(el, before, { highlight: (id) => { const t = findTask(id); return !!t && Date.now() - Date.parse(t.createdAt || 0) < 4000; }, highlightColor: cssVar('--accent-soft') });
     };
     const b = S.buckets(visibleTasks(), today());
@@ -1242,7 +1250,7 @@
         <div class="hero-actions">${syncPill()}
           <button type="button" class="icon-btn" data-action="search" aria-label="ค้นหางาน" aria-expanded="${ui.searchOpen}">${icon('search')}</button></div>
       </header>
-      <section class="hero" aria-label="ภาพรวมวันนี้">
+      <section class="hero" data-depth aria-label="ภาพรวมวันนี้">
         <div class="date-row">
           <div class="date-block">
             <span class="date-num">${d.getDate()}</span>
@@ -1497,24 +1505,30 @@
     if (cat) parts.push(esc(cat.name));
     return parts.join(' · ');
   }
+  // In-app previews of the Android widgets (also rendered into the widget picker images). Keep in step with
+  // android/res/layout/widget_*.xml and WidgetArt.java.
+  const hwRing = (done, total) => `<span class="hw-ring" style="--p:${total ? Math.round((done / total) * 100) : 0}"><i>${done}/${total}</i></span>`;
   function homeWidgetSummary(b) {
     const n = S.nextUp(b);
     const total = b.today.length + b.doneToday.length + b.doing.filter((t) => t.due === today()).length;
     const tiles = [['overdue', b.overdue.length, 'เลยกำหนด'], ['today', b.today.length, 'วันนี้'], ['doing', b.doing.length, 'กำลังทำ'], ['done', b.doneToday.length, 'เสร็จแล้ว']];
-    return `<div class="hw hw-summary" role="img" aria-label="ตัวอย่างวิดเจ็ตสรุปงาน">
-      <div class="hw-head"><div class="hw-title"><span class="hw-date">${esc(widgetDate(today()))}</span><span class="hw-brand">X10 Tasks · เสร็จ ${b.doneToday.length}/${total}</span></div>
-        <span class="hw-btn">${icon('refresh')}</span><span class="hw-btn add">${icon('plus')}</span></div>
-      <div class="hw-tiles">${tiles.map(([k, v, l]) => `<div class="hw-tile st-${k}${v ? '' : ' zero'}"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
-      <div class="hw-next">${n ? `<span class="hw-next-k${S.statusOf(n) === 'doing' ? ' doing' : ''}">${S.statusOf(n) === 'doing' ? 'กำลังทำ' : 'ถัดไป'}${n.time ? ' ' + esc(n.time) : ''}</span><span class="hw-next-t">${esc(n.title)}</span>` : '<span class="hw-next-t">ไม่มีงานค้าง</span>'}</div>
-      ${n && S.stepInfo(n).current ? `<div class="hw-step"><span>ขั้น ${S.stepInfo(n).index}/${S.stepInfo(n).total} · ${esc(S.stepInfo(n).current.title)}</span><span class="hw-bar"><span style="width:${Math.round((S.stepInfo(n).done / S.stepInfo(n).total) * 100)}%"></span></span></div>` : ''}
+    const d = toDate(today());
+    const info = n ? S.stepInfo(n) : null;
+    return `<div class="hw hw-summary hw-card" role="img" aria-label="ตัวอย่างวิดเจ็ตสรุปงาน">
+      <div class="hw-head"><span class="hw-dnum">${d.getDate()}</span><span class="hw-dtext"><b>${esc(F_WEEKDAY.format(d))}</b><small>${esc(F_MONTH_YEAR.format(d))}</small></span>
+        ${hwRing(b.doneToday.length, total)}<span class="hw-btn glass">${icon('refresh')}</span><span class="hw-btn add">${icon('plus')}</span></div>
+      <div class="hw-tiles">${tiles.map(([k, v, l]) => `<div class="hw-tile st-${k}${v ? '' : ' zero'}"><b><i></i>${v}</b><span>${l}</span></div>`).join('')}</div>
+      <div class="hw-next">${n ? `<div class="hw-next-line"><span class="hw-next-k${S.statusOf(n) === 'doing' ? ' doing' : ''}">${S.statusOf(n) === 'doing' ? 'กำลังทำ' : 'ถัดไป'}${n.time ? ' ' + esc(n.time) : ''}</span><span class="hw-next-t">${esc(n.title)}</span></div>
+        ${info.current ? `<div class="hw-step"><span>ขั้น ${info.index}/${info.total} · ${esc(info.current.title)}</span><span class="hw-bar"><span style="width:${Math.round((info.done / info.total) * 100)}%"></span></span></div>` : ''}` : '<div class="hw-next-line"><span class="hw-next-t">ไม่มีงานค้าง</span></div>'}</div>
     </div>`;
   }
   function homeWidgetList(b, max = 5) {
     const rows = widgetRows(b);
+    const total = b.today.length + b.doneToday.length + b.doing.filter((t) => t.due === today()).length;
     return `<div class="hw hw-list" role="img" aria-label="ตัวอย่างวิดเจ็ตรายการงาน">
-      <div class="hw-head"><div class="hw-title"><span class="hw-date">งานของวันนี้</span>
+      <div class="hw-lhead hw-card"><div class="hw-title"><span class="hw-ltitle">งานของวันนี้</span>
         <span class="hw-counts"><i class="late">เลย ${b.overdue.length}</i><i>วันนี้ ${b.today.length}</i><i class="doing">ทำอยู่ ${b.doing.length}</i></span></div>
-        <span class="hw-btn add">${icon('plus')}</span></div>
+        ${hwRing(b.doneToday.length, total)}<span class="hw-btn glass">${icon('refresh')}</span><span class="hw-btn add">${icon('plus')}</span></div>
       <ul class="hw-rows">${rows.slice(0, max).map((t) => `<li class="st-${S.statusOf(t)}" style="--cat:${catColor(t.category)}"><span class="hw-check"></span>
         <span class="hw-row-text"><span class="hw-row-t">${esc(t.title)}</span><span class="hw-row-m">${widgetRowMeta(t)}</span>${S.stepInfo(t).total ? `<span class="hw-bar"><span style="width:${Math.round((S.stepInfo(t).done / S.stepInfo(t).total) * 100)}%"></span></span>` : ''}</span>${t.priority ? `<span class="hw-flag p${t.priority}">${icon('flag')}</span>` : ''}</li>`).join('') || '<li class="hw-empty">ไม่มีงานค้าง เยี่ยมมาก</li>'}</ul>
       ${rows.length > max ? `<p class="hw-more">อีก ${rows.length - max} งาน · แตะเพื่อเปิดแอป</p>` : ''}
@@ -1543,7 +1557,7 @@
     }
     return `<section class="panel widgets-panel">
       <div class="panel-head"><span class="panel-icon">${icon('widget')}</span><div><h2>วิดเจ็ตหน้าจอโฮม</h2><p>เปิดมือถือก็เห็นสถานะงานทันที ไม่ต้องเข้าแอป</p></div></div>
-      <div class="wallpaper">${homeWidgetSummary(b)}${homeWidgetList(b, 4)}</div>
+      <div class="wallpaper" data-depth>${homeWidgetSummary(b)}${homeWidgetList(b, 4)}</div>
       ${howto}
     </section>`;
   }
@@ -2002,7 +2016,7 @@
       </section>
       <section class="panel">
         <h2>การเคลื่อนไหว</h2>
-        <label class="switch-row"><span><strong>การเคลื่อนไหว</strong><span>เคลื่อนไหวสั้น ๆ ตอนทำเสร็จ ย้ายงาน และเปิดปิดหน้าต่าง</span></span>
+        <label class="switch-row"><span><strong>การเคลื่อนไหว 2.5D</strong><span>การ์ดวันนี้เอียงตามมือถือ งานพับเก็บเมื่อเสร็จ หน้าจอถอยลึกเมื่อเปิดหน้าต่าง</span></span>
           <input type="checkbox" class="switch" data-action="set-motion"${state.settings.motion !== false ? ' checked' : ''}></label>
         <label class="switch-row"><span><strong>สั่นเบา ๆ เมื่อแตะ</strong><span>ตอนติ๊กเสร็จและปัดงาน</span></span>
           <input type="checkbox" class="switch" data-action="set-haptics"${state.settings.haptics !== false ? ' checked' : ''}></label>
@@ -2627,6 +2641,7 @@
     view.dataset.view = ui.view;
     if (ui.view === 'tasks') renderTaskList(before);
     if (hero) animateHero(hero);
+    M.retilt();
     const activeTab = ui.view === 'apps' ? 'options' : ui.view;
     $('#tabbar').innerHTML = TABS.map((tab) => tab
       ? `<button type="button" class="tab${activeTab === tab[0] ? ' on' : ''}" data-action="go" data-view="${tab[0]}" ${activeTab === tab[0] ? 'aria-current="page"' : ''}>${icon(tab[1])}<span>${tab[2]}</span></button>`
@@ -2654,7 +2669,7 @@
     render();
     if (changedView) {
       window.scrollTo(0, 0);
-      M.enter($('#view'), view === 'tasks' ? ':scope > :not(#task-list)' : ':scope > *', { max: 6, step: 24, dist: 6 });
+      M.enter($('#view'), view === 'tasks' ? ':scope > :not(#task-list)' : ':scope > *', { max: 6, step: 34, dist: 14, tip: 7 });
     }
     if (view === 'connect' || view === 'apps') loadRemote();
   }
@@ -3159,6 +3174,8 @@
     },
   };
   M.setEnabled(state.settings.motion !== false);
+  M.startTilt();
+  M.pressTilt('.tile, .next, .wallpaper .hw, .app-card, .link-panel');
   M.sheetDrag($('#sheet-root'), () => closeSheet());
   M.swipeRows({
     selector: '.tlist .task',
