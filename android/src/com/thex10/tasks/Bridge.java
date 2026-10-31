@@ -156,7 +156,9 @@ final class Bridge {
                 try {
                     if (!url.startsWith("https://") && !url.startsWith("http://")) throw new IOException("URL must start with http:// or https://");
                     conn = (HttpURLConnection) new URL(url).openConnection();
-                    conn.setRequestMethod("POST".equals(method) ? "POST" : "GET");
+                    String m = method == null ? "GET" : method.toUpperCase();
+                    if (!m.matches("GET|POST|PUT|PATCH|DELETE")) m = "GET";
+                    conn.setRequestMethod(m); // Android's HttpURLConnection accepts PATCH
                     conn.setConnectTimeout(10000);
                     conn.setReadTimeout(15000);
                     conn.setInstanceFollowRedirects(true);
@@ -166,7 +168,7 @@ final class Bridge {
                         String k = keys.next();
                         conn.setRequestProperty(k, h.optString(k));
                     }
-                    if ("POST".equals(method) && body != null && !body.isEmpty()) {
+                    if ((m.equals("POST") || m.equals("PUT") || m.equals("PATCH")) && body != null && !body.isEmpty()) {
                         conn.setDoOutput(true);
                         OutputStream os = conn.getOutputStream();
                         os.write(body.getBytes("UTF-8"));

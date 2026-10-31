@@ -262,6 +262,17 @@ test('app templates turn each app\'s documented response into tasks', () => {
   assert.equal(gh.conf.headers.Authorization, undefined);
   assert.deepEqual([gh.items[0].status, gh.items[0].done, gh.items[0].externalId], ['done', true, '12']);
 
-  const tf = app('taskflow').build({ url: 'https://taskflow.thex10smile.com', key: 'abc', auth: 'x-api-key', endpoint: 'https://taskflow.thex10smile.com/api/tasks', itemsPath: 'data' });
-  assert.deepEqual([tf.url, tf.headers['X-API-Key'], tf.itemsPath], ['https://taskflow.thex10smile.com/api/tasks', 'abc', 'data']);
+  const tf = app('taskflow').build({ url: 'https://taskflow.thex10smile.com/', key: ' tfk_abc ', scope: 'open', done: 'DONE', itemsPath: 'tasks' });
+  assert.deepEqual([tf.url, tf.headers['x-api-key'], tf.itemsPath, tf.missingDone], ['https://taskflow.thex10smile.com/api/external/my-tasks?status=TODO,IN_PROGRESS', 'tfk_abc', 'tasks', true]);
+  assert.deepEqual(tf.writeBack.status, { todo: 'TODO', doing: 'IN_PROGRESS', done: 'DONE' });
+  assert.equal(app('taskflow').build({ key: 'k', scope: 'all' }).url, 'https://taskflow.thex10smile.com/api/external/my-tasks');
+});
+
+test('write-back request: status change becomes the source app\'s PATCH', () => {
+  const conn = { id: 'n1', headers: { 'x-api-key': 'k' }, writeBack: { method: 'PATCH', url: 'https://tf.example/api/external/tasks/{{id}}', body: '{"status":"{{status}}"}', status: { todo: 'TODO', doing: 'IN_PROGRESS', done: 'DONE' } } };
+  const t = Object.assign(S.createTask({ title: 'x', status: 'doing' }, ctx), { source: 'connector:n1', externalId: '1116' });
+  assert.deepEqual(S.writeBackRequest(conn, t), { method: 'PATCH', url: 'https://tf.example/api/external/tasks/1116', headers: { 'Content-Type': 'application/json', 'x-api-key': 'k' }, body: '{"status":"IN_PROGRESS"}' });
+  assert.equal(S.writeBackRequest(conn, Object.assign({}, t, { source: 'app' })), null, 'only tasks from that connection');
+  conn.writeBack.status.done = '';
+  assert.equal(S.writeBackRequest(conn, Object.assign({}, t, { done: true, status: 'done' })), null, 'empty = do not send');
 });

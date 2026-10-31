@@ -996,3 +996,24 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .link-btn.accent { color: var(--accent); font-weight: 600; text-decoration: underline; }
 .block-row { margin-top: 4px; }
 .block-row .btn { flex: 1 1 auto; }
+
+/* ---------- paste a key, choose what to use it for ---------- */
+.quick-key { background: linear-gradient(160deg, var(--accent-soft), var(--surface) 70%); }
+.quick-key-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.quick-key-row input { width: 100%; min-height: 48px; padding: 9px 12px; border-radius: 13px; border: 1.5px solid var(--line); background: var(--surface); font-size: 15px; color: var(--ink); }
+.quick-key-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.quick-key-row .btn { min-height: 48px; }
+.detected { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); }
+.detected > span:not(.app-badge) { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.4; }
+.detected .mono { font-size: 12px; }
+.use-list { display: flex; flex-direction: column; gap: 8px; }
+.use-opt { position: relative; }
+.use-opt input { position: absolute; top: 14px; left: 14px; width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.use-opt span { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px 12px 46px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); cursor: pointer; }
+.use-opt b { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14.5px; color: var(--ink); }
+.use-opt b .i { width: 17px; height: 17px; color: var(--accent); }
+.use-opt small { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+.use-opt input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+.use-opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sheets-guide .steps b { color: var(--ink); }
+.code-box { max-height: 280px; overflow: auto; }

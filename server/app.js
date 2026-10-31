@@ -253,7 +253,7 @@ function createApp(options = {}) {
   route('POST', '/api/v1/connectors/discover', 'admin', async ({ body }) => {
     const url = checkUrl(body.url);
     const headers = body.headers && typeof body.headers === 'object' ? Object.fromEntries(Object.entries(body.headers).filter(([k, v]) => /^[\w-]+$/.test(k) && typeof v === 'string')) : {};
-    const r = await S.discoverApi(url, headers, { fetch: (u, o) => fetch(u, Object.assign({ redirect: 'follow' }, o)), timeoutMs: 6000 });
+    const r = await S.discoverApi(url, headers, { fetch: (u, o) => fetch(u, Object.assign({ redirect: 'follow' }, o)), timeoutMs: 8000, exact: !!body.exact });
     r.found = r.found.slice(0, 6).map(({ items, ...rest }) => rest);
     r.best = r.found[0] || null;
     return r;

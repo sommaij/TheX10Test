@@ -230,13 +230,35 @@
     const next = S.patchTask(t, fields, ctx());
     upsertLocal(next);
     Sync.send('PATCH', `/tasks/${enc(id)}`, fields, id);
+    if (S.statusOf(next) !== S.statusOf(t)) writeBack(next);
     changed();
     return next;
+  }
+  // A task that came from another app (e.g. TaskFlow): tell that app its new status.
+  // With the X10 server connected, the server does this instead.
+  function writeBack(task) {
+    if (Sync.on) return;
+    const conn = state.connectors.find((c) => task.source === `connector:${c.id}`);
+    const req = S.writeBackRequest(conn, task);
+    if (!req) return;
+    const fail = (why) => {
+      conn.lastWriteError = `ส่งสถานะ “${task.title}” ไม่สำเร็จ: ${why}`;
+      save();
+      toast(`${conn.name} ยังไม่ได้รับสถานะใหม่: ${why}`);
+    };
+    httpFetch(req.url, { method: req.method, headers: req.headers, body: req.body })
+      .then((res) => {
+        if (!res.ok) return fail(`HTTP ${res.status}`);
+        conn.lastWriteError = null;
+        save();
+      })
+      .catch((e) => fail(e.message));
   }
   function setTaskDone(id, done) {
     const t = findTask(id);
     if (!t) return null;
     const r = S.setDone(t, done, ctx());
+    if (S.statusOf(r.task) !== S.statusOf(t)) writeBack(r.task);
     upsertLocal(r.task);
     if (r.spawn) upsertLocal(r.spawn);
     if (r.removeId) removeLocal(r.removeId);
@@ -635,6 +657,13 @@
         const r = upsertFromSource(f, source);
         if (r === 'created') created++;
         if (r === 'updated') updated++;
+      }
+      if (conn.missingDone && !mapped.errors.length) {
+        const seen = new Set(mapped.items.map((f) => f.externalId));
+        for (const t of state.tasks.filter((x) => x.source === source.source && !x.done && x.externalId && !seen.has(x.externalId))) {
+          upsertLocal(S.setDone(t, true, ctx()).task);
+          updated++;
+        }
       }
       Object.assign(conn, { lastSyncAt: nowISO(), lastStatus: 'ok', lastError: mapped.errors.length ? `${mapped.errors.length} รายการอ่านไม่ได้` : null, lastCount: mapped.items.length });
       changed();
@@ -1356,10 +1385,12 @@
         ${appBadge(app)}
         <div class="row-main">
           <strong>${esc(c.name)}</strong>
-          <span class="row-sub">${c.lastStatus === 'error' ? `<em class="bad">เชื่อมต่อไม่สำเร็จ: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `<span class="ok-text">เชื่อมต่อแล้ว</span> · ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · ทุก ${intervalLabel(c.interval)}` : ''}</span>
+          <span class="row-sub">${c.lastStatus === 'error' ? `<em class="bad">เชื่อมต่อไม่สำเร็จ: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `<span class="ok-text">เชื่อมต่อแล้ว</span> · ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · ทุก ${intervalLabel(c.interval)}` : ''}${c.writeBack ? ' · ซิงก์สองทาง' : ''}</span>
+          ${c.lastWriteError ? `<span class="row-sub"><em class="bad">${esc(c.lastWriteError)}</em></span>` : ''}
         </div>
         <div class="row-actions">
           <button type="button" class="icon-btn small" data-action="sync-connector" data-id="${esc(c.id)}" data-remote="${Sync.on ? 1 : 0}" aria-label="ซิงก์ ${esc(c.name)} ตอนนี้">${icon('refresh')}</button>
+          ${c.app === 'taskflow' ? `<button type="button" class="icon-btn small" data-action="sheets-script" data-app="${esc(c.app)}" aria-label="ใช้ ${esc(c.name)} ใน Google Sheets">${icon('tasks')}</button>` : ''}
           <button type="button" class="icon-btn small" data-action="edit-connector" data-id="${esc(c.id)}" aria-label="ตั้งค่า ${esc(c.name)}">${icon('edit')}</button>
         </div>
       </li>`;
@@ -1376,13 +1407,13 @@
         <h1>เชื่อมต่อแอปด้วย API key</h1>
         <p class="lede">ใส่ API key ของแอปที่ใช้อยู่ X10 Tasks จะดึงงานเข้ามาให้อัตโนมัติ แสดงสถานะ ขั้นตอน และขึ้นบนวิดเจ็ตเหมือนงานอื่น</p>
       </header>
-      ${locked ? '<p class="error-line">เครื่องนี้เชื่อมต่อเซิร์ฟเวอร์ด้วยคีย์แอป ต้องใช้คีย์ผู้ดูแลจึงจะตั้งค่าการเชื่อมต่อได้</p>' : ''}
+      ${locked ? '<p class="error-line">เครื่องนี้เชื่อมต่อเซิร์ฟเวอร์ด้วยคีย์แอป ต้องใช้คีย์ผู้ดูแลจึงจะตั้งค่าการเชื่อมต่อได้</p>' : quickKeyPanel()}
       <section class="panel">
         <h2>แอปที่เชื่อมต่อแล้ว</h2>
         ${connectedRows()}
       </section>
       <section class="panel">
-        <div class="panel-head"><span class="panel-icon">${icon('key')}</span><div><h2>เพิ่มแอป</h2><p>เลือกแอป ใส่ API key แล้วกดทดสอบก่อนบันทึก คีย์จะถูกซ่อนหลังบันทึก</p></div></div>
+        <div class="panel-head"><span class="panel-icon">${icon('plug')}</span><div><h2>หรือเลือกแอปเอง</h2><p>เลือกแอป ใส่ API key แล้วกดทดสอบก่อนบันทึก คีย์จะถูกซ่อนหลังบันทึก</p></div></div>
         <div class="app-grid">
           ${S.APP_CATALOG.map((a) => `<button type="button" class="app-card" data-action="setup-app" data-app="${a.id}"${locked ? ' disabled' : ''}>
             ${appBadge(a)}<span class="app-name">${esc(a.name)}</span><span class="app-desc">${esc(a.desc)}</span>
@@ -1405,16 +1436,17 @@
   }
 
   const FIELD_LABEL = { title: 'ชื่องาน', notes: 'รายละเอียด', due: 'วันที่', time: 'เวลา', done: 'เสร็จ', status: 'สถานะ', priority: 'ความสำคัญ', externalId: 'รหัส' };
-  async function discover(url, headers) {
-    if (Sync.on) return Sync.api('POST', '/connectors/discover', { url, headers });
-    return S.discoverApi(url, headers, { fetch: httpFetch, timeoutMs: 6000 });
+  async function discover(url, headers, exact) {
+    if (Sync.on) return Sync.api('POST', '/connectors/discover', { url, headers, exact: !!exact });
+    return S.discoverApi(url, headers, { fetch: httpFetch, timeoutMs: 8000, exact: !!exact });
   }
 
-  function openAppSetup(appId, connectorId) {
+  function openAppSetup(appId, connectorId, prefill) {
     const app = appOf(appId);
     if (!app) return;
     const existing = connectorId ? connectorList().find((c) => c.id === connectorId) : null;
     const values = (existing && existing.appValues) || {};
+    const typed = prefill || {};
     let found = values.endpoint ? { url: values.endpoint, itemsPath: values.itemsPath || '', mapping: safeJson(values.mapping) } : null;
     const field = (f) => {
       const id = `af-${f.id}`;
@@ -1425,7 +1457,7 @@
       if (f.type === 'secret') {
         const saved = values[f.id];
         return `<label class="field"><span class="field-label">${icon('key')} ${esc(f.label)}${f.optional ? ' <span class="muted">(ถ้ามี)</span>' : ''}</span>
-          <span class="secret-row"><input type="password" id="${id}" autocomplete="off" spellcheck="false" placeholder="${esc(saved ? `บันทึกไว้แล้ว ••••${saved.slice(-4)} · เว้นว่างถ้าไม่เปลี่ยน` : f.placeholder || 'วางคีย์ที่นี่')}">
+          <span class="secret-row"><input type="password" id="${id}" value="${esc(typed[f.id] || '')}" autocomplete="off" spellcheck="false" placeholder="${esc(saved ? `บันทึกไว้แล้ว ••••${saved.slice(-4)} · เว้นว่างถ้าไม่เปลี่ยน` : f.placeholder || 'วางคีย์ที่นี่')}">
           <button type="button" class="icon-btn small" data-reveal="${id}" aria-label="แสดงหรือซ่อนคีย์">${icon('eye')}</button></span></label>`;
       }
       return `<label class="field"><span class="field-label">${esc(f.label)}</span><input type="${f.type === 'url' ? 'url' : 'text'}" id="${id}" value="${esc(values[f.id] || f.value || '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off" spellcheck="false"></label>`;
@@ -1480,6 +1512,21 @@
             app: app.id, appValues: v,
           });
         };
+        // Apps with a known address: read the real list once to learn where tasks are and how fields map.
+        const autoMap = async () => {
+          if (!app.autoMap || found) return true;
+          const conf = app.build(Object.assign({}, read(), { mapping: {} }));
+          preview.innerHTML = `<p class="muted">กำลังอ่านรายการงานจาก ${esc(app.name)}…</p>`;
+          const r = await discover(conf.url, conf.headers, true);
+          if (r.best) {
+            found = r.best;
+            return true;
+          }
+          const why = r.needsKey.length ? `${app.name} ไม่รับ API key นี้ (HTTP ${r.needsKey[0].status}) ตรวจคีย์อีกครั้ง`
+            : r.errors.length ? `ติดต่อ ${app.name} ไม่ได้: ${r.errors[0].message}` : `ไม่พบรายการงานในคำตอบของ ${app.name}`;
+          preview.innerHTML = `<p class="error-line">${esc(why)}</p>`;
+          return false;
+        };
         const discoverBtn = $('#af-discover', sheet);
         if (discoverBtn) {
           discoverBtn.addEventListener('click', async () => {
@@ -1530,8 +1577,9 @@
             preview.innerHTML = '<p class="error-line">กด “ค้นหา API อัตโนมัติ” ก่อน เพื่อหาที่อยู่รายการงาน</p>';
             return;
           }
-          preview.innerHTML = '<p class="muted">กำลังดึงข้อมูล…</p>';
           try {
+            if (!(await autoMap())) return;
+            preview.innerHTML = '<p class="muted">กำลังดึงข้อมูล…</p>';
             preview.innerHTML = previewHtml(await previewConnector(config()));
           } catch (e) {
             preview.innerHTML = `<p class="error-line">${esc(e.message)}</p>`;
@@ -1549,6 +1597,7 @@
             return;
           }
           try {
+            if (!(await autoMap())) return;
             const r = await saveConnector(config(), existing);
             closeSheet();
             toast(`เชื่อมต่อ ${app.name} แล้ว: งานใหม่ ${r.created} · อัปเดต ${r.updated}`);
@@ -1558,6 +1607,129 @@
         });
       },
     });
+  }
+
+  // ---------- paste a key, then choose what to use it for ----------
+  function quickKeyPanel() {
+    return `<section class="panel quick-key">
+      <div class="panel-head"><span class="panel-icon">${icon('key')}</span><div><h2>วาง API key</h2><p>วางคีย์ แล้วเลือกว่าจะใช้ทำอะไร แอปจะรู้เองว่าเป็นคีย์ของระบบไหน</p></div></div>
+      <form id="quick-key-form" class="quick-key-row" novalidate>
+        <span class="secret-row"><input type="password" id="qk-key" placeholder="เช่น tfk_… ของ TaskFlow" autocomplete="off" spellcheck="false" aria-label="API key">
+        <button type="button" class="icon-btn small" data-reveal-input="qk-key" aria-label="แสดงหรือซ่อนคีย์">${icon('eye')}</button></span>
+        <button type="submit" class="btn primary">ต่อไป ${icon('right')}</button>
+      </form>
+    </section>`;
+  }
+
+  function openKeyUse(key, pickedApp) {
+    const appId = pickedApp || S.detectKeyApp(key);
+    const app = appOf(appId);
+    if (appId === 'x10') {
+      openSheet(`${sheetHead('คีย์นี้เป็นของ X10 Tasks')}
+        <div class="editor"><p>คีย์ที่ขึ้นต้นด้วย <code>x10_</code> เป็นคีย์ที่ X10 สร้างให้แอปอื่นใช้ส่งงานเข้ามา ไม่ต้องวางที่นี่</p>
+          <p class="hint">ดูหรือสร้างลิงก์ได้ที่หน้า เชื่อมต่อ → ลิงก์ API ให้แอปอื่นส่งงานเข้ามา</p>
+          <footer class="sheet-foot"><span></span><button type="button" class="btn primary" data-action="go" data-view="connect">ไปที่ลิงก์ API</button></footer></div>`, { label: 'คีย์ของ X10' });
+      return;
+    }
+    if (!app) {
+      openSheet(`${sheetHead('คีย์นี้เป็นของแอปไหน', 'เลือกแอปที่ออกคีย์นี้ให้')}
+        <div class="editor"><div class="app-grid">${S.APP_CATALOG.map((a) => `<button type="button" class="app-card" data-pick-app="${a.id}">${appBadge(a)}<span class="app-name">${esc(a.name)}</span></button>`).join('')}</div></div>`, {
+        label: 'เลือกแอป',
+        onMount: (sheet) => $$('[data-pick-app]', sheet).forEach((b) => b.addEventListener('click', () => openKeyUse(key, b.dataset.pickApp))),
+      });
+      return;
+    }
+    const existing = connectorList().find((c) => c.app === app.id);
+    const twoWay = app.id === 'taskflow';
+    const sheets = app.id === 'taskflow';
+    const uses = [
+      ['pull', true, `${icon('inbox')} ดึงงานมาไว้ใน X10 Tasks และวิดเจ็ต`, `งานของคุณจาก ${app.name} จะเข้ามาเองทุก 15 นาที พร้อมสถานะและขั้นตอน`],
+      twoWay ? ['write', true, `${icon('refresh')} อัปเดตสถานะกลับไปที่ ${app.name}`, 'กดเริ่มทำหรือทำเสร็จใน X10 หรือบนวิดเจ็ต แล้ว TaskFlow เปลี่ยนตาม (IN_PROGRESS / DONE)'] : null,
+      sheets ? ['sheets', false, `${icon('tasks')} ใช้ใน Google Sheets (Apps Script)`, 'ได้โค้ดสำหรับวางใน Google Sheets: ดึงงานลงชีต แก้สถานะในชีตแล้ว TaskFlow เปลี่ยนตาม'] : null,
+    ].filter(Boolean);
+    openSheet(`${sheetHead(`ใช้คีย์ ${app.name} ทำอะไร`, existing ? `เชื่อมต่อ ${app.name} อยู่แล้ว คีย์นี้จะแทนคีย์เดิม` : '')}
+      <form class="editor" id="use-form" novalidate>
+        <p class="detected">${appBadge(app)}<span><strong>คีย์ของ ${esc(app.name)}</strong><span class="muted mono">${esc(key.slice(0, 8))}•••• ${esc(key.slice(-4))}</span></span>
+          <button type="button" class="link-btn accent" data-other-app>ไม่ใช่แอปนี้?</button></p>
+        <div class="use-list">${uses.map(([id, on, label, desc]) => `<label class="use-opt"><input type="checkbox" name="use" value="${id}"${on ? ' checked' : ''}><span><b>${label}</b><small>${esc(desc)}</small></span></label>`).join('')}</div>
+        ${app.fields.some((f) => f.type !== 'secret' && f.type !== 'select' && f.type !== 'url' && !f.optional) ? `<p class="hint">${icon('note')}${esc(app.name)} ต้องใส่ข้อมูลเพิ่มอีกนิด จะเปิดหน้าตั้งค่าให้ต่อ</p>` : ''}
+        <p class="error-line" id="use-err" hidden></p>
+        <footer class="sheet-foot"><span></span><button type="submit" class="btn primary">${icon('check')} ใช้งาน</button></footer>
+      </form>`, {
+      label: `ใช้คีย์ ${app.name}`,
+      onMount: (sheet) => {
+        $('[data-other-app]', sheet).addEventListener('click', () => openKeyUse(key, 'pick'));
+        $('#use-form', sheet).addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const chosen = $$('input[name="use"]:checked', sheet).map((x) => x.value);
+          const err = $('#use-err', sheet);
+          const btn = $('button[type="submit"]', sheet);
+          if (!chosen.length) {
+            err.textContent = 'เลือกอย่างน้อย 1 อย่าง';
+            err.hidden = false;
+            return;
+          }
+          const needsMore = app.fields.some((f) => f.type !== 'secret' && f.type !== 'select' && f.type !== 'url' && !f.optional);
+          if (chosen.includes('pull') && needsMore) return openAppSetup(app.id, existing ? existing.id : null, { key });
+          if (!chosen.includes('pull')) return openSheetsScript(app, key);
+          btn.disabled = true;
+          btn.textContent = 'กำลังเชื่อมต่อ…';
+          try {
+            const values = Object.assign({}, existing && existing.appValues, { key, sync: chosen.includes('write') ? 'two-way' : 'pull' });
+            for (const f of app.fields) if (values[f.id] === undefined && f.value !== undefined) values[f.id] = f.value;
+            const probe = app.build(Object.assign({}, values, { mapping: {} }));
+            const found = await discover(probe.url, probe.headers, true);
+            if (!found.best) {
+              throw new Error(found.needsKey.length ? `${app.name} ไม่รับคีย์นี้ (HTTP ${found.needsKey[0].status})` : found.errors.length ? `ติดต่อ ${app.name} ไม่ได้: ${found.errors[0].message}` : `ไม่พบรายการงานในคำตอบของ ${app.name}`);
+            }
+            Object.assign(values, { itemsPath: found.best.itemsPath || '', mapping: JSON.stringify(found.best.mapping || {}) });
+            const conf = Object.assign(app.build(Object.assign({}, values, { mapping: found.best.mapping })), {
+              name: existing ? existing.name : app.name, method: 'GET', body: '',
+              category: existing ? existing.category : state.categories.some((c) => c.id === 'work') ? 'work' : null,
+              interval: existing ? existing.interval : 15, app: app.id, appValues: values,
+            });
+            const r = await saveConnector(conf, existing);
+            toast(`เชื่อมต่อ ${app.name} แล้ว: งานใหม่ ${r.created} · อัปเดต ${r.updated}`);
+            if (chosen.includes('sheets')) openSheetsScript(app, key);
+            else {
+              closeSheet();
+              const input = $('#qk-key');
+              if (input) input.value = '';
+            }
+          } catch (x) {
+            err.textContent = x.message;
+            err.hidden = false;
+            btn.disabled = false;
+            btn.innerHTML = `${icon('check')} ใช้งาน`;
+          }
+        });
+      },
+    });
+  }
+
+  /** Steps and code for using the key in Google Sheets with Apps Script. */
+  function openSheetsScript(app, key) {
+    const conn = connectorList().find((c) => c.app === app.id);
+    const values = (conn && conn.appValues) || {};
+    const code = window.X10SheetsScript.taskflowScript({ url: values.url || 'https://taskflow.thex10smile.com', doneStatus: values.done || 'DONE' });
+    openSheet(`${sheetHead('ใช้ TaskFlow ใน Google Sheets', 'ดึงงานลงชีต แก้สถานะในชีต แล้ว TaskFlow เปลี่ยนตาม')}
+      <div class="editor sheets-guide">
+        <ol class="steps">
+          <li>เปิด Google Sheet ที่ต้องการ แล้วไปที่ <b>ส่วนขยาย (Extensions) → Apps Script</b></li>
+          <li>ลบโค้ดเดิม วางโค้ดด้านล่าง แล้วกด <b>บันทึก</b></li>
+          <li>กลับมาที่ชีตแล้วรีเฟรช จะมีเมนู <b>TaskFlow</b></li>
+          <li>เลือก <b>TaskFlow → ตั้งค่า API key</b> แล้ววางคีย์ (Google จะขออนุญาตครั้งแรก กดอนุญาต)</li>
+          <li>เลือก <b>TaskFlow → ดึงงานของฉัน</b> งานจะลงแท็บชื่อ TaskFlow แก้คอลัมน์ <code>status</code> ได้จากรายการ TODO / IN_PROGRESS / DONE</li>
+          <li>เลือก <b>เปิดซิงก์อัตโนมัติ</b> ให้ส่งสถานะทันทีที่แก้ และดึงงานใหม่ทุก 15 นาที</li>
+        </ol>
+        <div class="btn-row">
+          <button type="button" class="btn primary" data-action="copy" data-text="${esc(code)}">${icon('copy')} คัดลอกโค้ด Apps Script</button>
+          ${key ? `<button type="button" class="btn ghost" data-action="copy" data-text="${esc(key)}">${icon('key')} คัดลอก API key</button>` : ''}
+        </div>
+        <details class="howto"><summary>ดูโค้ด (${code.split('\n').length} บรรทัด)</summary><div class="copy-box code-box"><pre>${esc(code)}</pre></div></details>
+        <p class="hint">${icon('key')}คีย์ไม่ได้อยู่ในโค้ด สคริปต์เก็บคีย์ไว้ในบัญชี Google ของคุณ (User Properties) แชร์ชีตให้คนอื่นได้โดยคีย์ไม่หลุด</p>
+        <footer class="sheet-foot"><span></span><button type="button" class="btn primary" data-action="close-sheet">เสร็จแล้ว</button></footer>
+      </div>`, { label: 'ใช้ใน Google Sheets', wide: true });
   }
 
   /** Saves a connection (server or this phone) and syncs it once. */
@@ -2463,6 +2635,7 @@
       if (c && appOf(c.app)) openAppSetup(c.app, c.id);
       else openConnector(el.dataset.id);
     },
+    'sheets-script': (el) => openSheetsScript(appOf(el.dataset.app), ''),
     'setup-app': (el) => {
       const c = connectorList().find((x) => x.app === el.dataset.app);
       openAppSetup(el.dataset.app, c ? c.id : null);
@@ -2616,6 +2789,20 @@
     if (!$('#dialog-root').hidden) return;
     closeSheet();
   });
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'quick-key-form') return;
+    e.preventDefault();
+    const key = $('#qk-key').value.trim();
+    if (!key) return $('#qk-key').focus();
+    openKeyUse(key);
+  });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-reveal-input]');
+    if (!b) return;
+    const input = document.getElementById(b.dataset.revealInput);
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+
   // Custom app colour: preview live while the picker is open, save when it closes.
   document.addEventListener('input', (e) => {
     if (e.target.id !== 'accent-custom') return;

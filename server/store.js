@@ -105,7 +105,7 @@ class Store extends EventEmitter {
     }
     this._addCategoryFrom(fields);
     if (existing) {
-      const task = this._update(existing, fields, ctx);
+      const task = this._update(existing, fields, ctx, source.source);
       return { task, created: false };
     }
     const extra = { source: source.source, sourceName: fields.sourceName || source.sourceName || null };
@@ -121,16 +121,17 @@ class Store extends EventEmitter {
     return { task, created: true };
   }
 
-  updateTask(id, input) {
+  /** origin: who made the change (e.g. "connector:n_…" during a sync), so changes are not echoed back to it. */
+  updateTask(id, input, origin) {
     const existing = this.getTask(id);
     if (!existing) return null;
     const ctx = this.ctx();
     const fields = S.normalizeFields(input, ctx);
     this._addCategoryFrom(fields);
-    return this._update(existing, fields, ctx);
+    return this._update(existing, fields, ctx, origin);
   }
 
-  _update(existing, fields, ctx) {
+  _update(existing, fields, ctx, origin) {
     let task = S.patchTask(existing, fields, ctx);
     if ((fields.done === undefined || fields.done === existing.done) && sameTask(task, existing)) return existing;
     let spawn = null;
@@ -143,6 +144,7 @@ class Store extends EventEmitter {
     }
     this._replace(task);
     this.emit('event', 'task.updated', { task });
+    if (S.statusOf(task) !== S.statusOf(existing)) this.emit('statusChanged', task, S.statusOf(existing), origin || null);
     if (task.done && !existing.done) this.emit('event', 'task.completed', { task });
     if (spawn) {
       this.db.tasks.push(spawn);
@@ -389,6 +391,18 @@ function cleanConnector(body, isNew) {
     out.appValues = Object.fromEntries(Object.entries(v).filter(([k, x]) => /^[\w-]{1,30}$/.test(k) && typeof x === 'string').slice(0, 12).map(([k, x]) => [k, x.slice(0, 2000)]));
   }
   if (isNew || body.interval !== undefined) out.interval = Math.max(0, Math.min(1440, Number(body.interval) || 0));
+  if (isNew || body.missingDone !== undefined) out.missingDone = !!body.missingDone;
+  if (isNew || body.writeBack !== undefined) {
+    const wb = body.writeBack && typeof body.writeBack === 'object' ? body.writeBack : null;
+    out.writeBack = wb && typeof wb.url === 'string' && /^https?:\/\//.test(wb.url)
+      ? {
+        method: ['PATCH', 'PUT', 'POST'].includes(String(wb.method).toUpperCase()) ? String(wb.method).toUpperCase() : 'PATCH',
+        url: wb.url.slice(0, 500),
+        body: typeof wb.body === 'string' ? wb.body.slice(0, 2000) : '{"status":"{{status}}"}',
+        status: Object.fromEntries(['todo', 'doing', 'done'].map((k) => [k, wb.status && typeof wb.status[k] === 'string' ? wb.status[k].slice(0, 40) : ''])),
+      }
+      : null;
+  }
   if (body.active !== undefined) out.active = !!body.active;
   return out;
 }

@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.5.0';
+  const VERSION = '1.6.0';
   const STATUSES = ['todo', 'doing', 'done'];
   const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
   const COLORS = ['blue', 'green', 'amber', 'rose', 'violet', 'slate'];
@@ -763,6 +763,11 @@
       }
     };
 
+    if (opts.exact) {
+      (await run([base])).forEach(judge);
+      result.best = result.found[0] || null;
+      return result;
+    }
     // 1. published API descriptions
     const specs = await run(SPEC_PATHS.map((p) => origin + p));
     const fromSpecs = [];
@@ -794,21 +799,32 @@
    */
   const APP_CATALOG = [
     {
+      // TaskFlow external API: GET /api/external/my-tasks, PATCH /api/external/tasks/<id>, key in x-api-key.
       id: 'taskflow', name: 'TaskFlow', badge: 'TF', color: '#0a7a70',
-      desc: 'ระบบงาน taskflow.thex10smile.com',
-      help: 'ขอ API key จากผู้ดูแลระบบ TaskFlow แล้วกด “ค้นหา API อัตโนมัติ” ระบบจะหาที่อยู่รายการงานและจับคู่ฟิลด์ให้',
-      discover: true,
+      desc: 'งานของฉันใน taskflow.thex10smile.com · ซิงก์สองทาง',
+      help: 'วาง API key ของ TaskFlow (ขึ้นต้นด้วย tfk_) แล้วกดทดสอบ แอปจะอ่านรายการงานและจับคู่ฟิลด์ให้เอง เมื่อเริ่มทำหรือทำเสร็จใน X10 สถานะใน TaskFlow จะเปลี่ยนตาม',
+      autoMap: true,
       fields: [
+        { id: 'key', label: 'API key (x-api-key)', type: 'secret', placeholder: 'tfk_…' },
+        { id: 'sync', label: 'ใช้คีย์นี้', type: 'select', options: [['two-way', 'ดึงงาน + ส่งสถานะกลับไป TaskFlow'], ['pull', 'ดึงงานอย่างเดียว']], value: 'two-way' },
+        { id: 'scope', label: 'ดึงงาน', type: 'select', options: [['open', 'เฉพาะที่ยังไม่เสร็จ (TODO, IN_PROGRESS)'], ['all', 'ทั้งหมด']], value: 'open' },
+        { id: 'done', label: 'ทำเสร็จใน X10 แล้วตั้งสถานะใน TaskFlow เป็น', type: 'select', options: [['DONE', 'DONE'], ['COMPLETED', 'COMPLETED'], ['CLOSED', 'CLOSED'], ['', 'ไม่ต้องเปลี่ยน']], value: 'DONE' },
         { id: 'url', label: 'ที่อยู่ระบบ TaskFlow', type: 'url', value: 'https://taskflow.thex10smile.com' },
-        { id: 'key', label: 'API key', type: 'secret', optional: true },
-        { id: 'auth', label: 'ส่งคีย์แบบ', type: 'select', options: [['bearer', 'Authorization: Bearer คีย์'], ['x-api-key', 'X-API-Key: คีย์'], ['raw', 'Authorization: คีย์']], value: 'bearer' },
       ],
-      build: (v) => ({
-        url: v.endpoint || v.url,
-        headers: v.key ? (v.auth === 'x-api-key' ? { 'X-API-Key': v.key } : { Authorization: v.auth === 'raw' ? v.key : `Bearer ${v.key}` }) : {},
-        itemsPath: v.itemsPath || '',
-        mapping: v.mapping || {},
-      }),
+      build: (v) => {
+        const base = String(v.url || 'https://taskflow.thex10smile.com').trim().replace(/\/+$/, '');
+        const headers = v.key ? { 'x-api-key': String(v.key).trim() } : {};
+        return {
+          url: `${base}/api/external/my-tasks${v.scope === 'all' ? '' : '?status=TODO,IN_PROGRESS'}`,
+          headers, itemsPath: v.itemsPath || '', mapping: v.mapping || {},
+          // only open tasks are listed, so a task that disappears was finished in TaskFlow
+          missingDone: v.scope !== 'all',
+          writeBack: v.sync === 'pull' ? null : {
+            method: 'PATCH', url: `${base}/api/external/tasks/{{id}}`, body: '{"status":"{{status}}"}',
+            status: { todo: 'TODO', doing: 'IN_PROGRESS', done: v.done === undefined ? 'DONE' : v.done },
+          },
+        };
+      },
     },
     {
       id: 'trello', name: 'Trello', badge: 'T', color: '#0c66e4',
@@ -870,6 +886,33 @@
     },
   ];
 
+  /** Which app a pasted key belongs to, from its prefix (null = ask). */
+  function detectKeyApp(key) {
+    const k = String(key || '').trim();
+    if (/^tfk_/i.test(k)) return 'taskflow';
+    if (/^pk_\d+_/i.test(k)) return 'clickup';
+    if (/^(ghp_|gho_|ghs_|github_pat_)/.test(k)) return 'github';
+    if (/^x10_/.test(k)) return 'x10';
+    return null;
+  }
+
+  /**
+   * The request that tells the source app about a status change made in X10, or null.
+   * writeBack: {method, url with {{id}}, body with {{status}}, status: {todo, doing, done}}; headers come from the connector.
+   */
+  function writeBackRequest(connector, task) {
+    const wb = connector && connector.writeBack;
+    if (!wb || !wb.url || !task.externalId || task.source !== `connector:${connector.id}`) return null;
+    const value = (wb.status || {})[statusOf(task)];
+    if (!value) return null;
+    return {
+      method: wb.method || 'PATCH',
+      url: wb.url.replace(/\{\{\s*id\s*\}\}/g, encodeURIComponent(task.externalId)),
+      headers: Object.assign({ 'Content-Type': 'application/json' }, connector.headers || {}),
+      body: String(wb.body || '{"status":"{{status}}"}').replace(/\{\{\s*status\s*\}\}/g, value),
+    };
+  }
+
   // Built-in sample feed so the import screen can be tried without another system.
   function demoFeed(name, today) {
     if (name !== 'hotel-pms') return null;
@@ -919,7 +962,7 @@
     ValidationError, uid, randomHex, pad, parseStatus, statusOf, compareTasks, buckets, nextUp, widgetPayload,
     stepInfo, completeStep, STEP_TEMPLATES,
     ACCENTS, mix, contrast, accentTheme, categoryHex, validColor,
-    inferMapping, findTaskList, discoverApi, APP_CATALOG,
+    inferMapping, findTaskList, discoverApi, APP_CATALOG, writeBackRequest, detectKeyApp,
     partsInZone, todayIn, addDays, addMonths, weekday, isValidDate,
     parseWhen, parseTime, parseReminder, parseRepeat, parsePriority, parseDone, parseSubtasks,
     resolveCategory, normalizeFields, createTask, patchTask, nextDue, setDone,

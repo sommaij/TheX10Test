@@ -12,7 +12,7 @@ const title = html.match(/<title>[^<]*<\/title>/)[0];
 const fonts = between('<!-- FONTS:START -->', '<!-- FONTS:END -->');
 const body = between('<!-- BODY:START -->', '<!-- BODY:END -->');
 const css = fs.readFileSync(path.join(pub, 'css', 'app.css'), 'utf8');
-const js = ['shared.js', 'app.js'].map((f) => fs.readFileSync(path.join(pub, 'js', f), 'utf8')).join('\n');
+const js = ['shared.js', 'sheets-script.js', 'app.js'].map((f) => fs.readFileSync(path.join(pub, 'js', f), 'utf8')).join('\n');
 
 const page = `${title}
 <meta name="claude:viewport-fit-sides" content="cover">

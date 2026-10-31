@@ -245,6 +245,11 @@ function verify(rawBody, header, secret) {
 - `mapping` ใช้ `status` ได้ด้วย (เช่น `"status.status"` ของ ClickUp หรือ `"state"` ของ GitHub)
 - `app` และ `appValues` (ไม่บังคับ) เก็บว่าเป็นแอปไหนในหน้า “เชื่อมต่อแอปด้วย API key” และค่าที่กรอก (รวมคีย์) อ่านได้เฉพาะคีย์ผู้ดูแล
 - วันที่แบบ timestamp เป็นข้อความ (`"1793404800000"`) ก็อ่านได้
+- `writeBack` (ไม่บังคับ) ส่งสถานะที่เปลี่ยนใน X10 กลับไปที่แอปต้นทาง:
+  `{ "method": "PATCH", "url": "https://…/api/external/tasks/{{id}}", "body": "{\"status\":\"{{status}}\"}", "status": { "todo": "TODO", "doing": "IN_PROGRESS", "done": "DONE" } }`
+  ใช้ header เดียวกับ connector ส่วน `{{id}}` คือ `externalId` ของงาน สถานะที่เว้นว่างจะไม่ส่ง และการเปลี่ยนที่มาจากการซิงก์เองจะไม่ส่งกลับ
+- `missingDone: true` งานจากแหล่งนี้ที่หายไปจากรายการ (เช่น ดึงเฉพาะงานค้าง แล้วงานนั้นเสร็จในแอปต้นทาง) จะถูกติ๊กเสร็จใน X10
+- `POST /connectors/discover` ส่ง `"exact": true` เพื่ออ่านเฉพาะ URL ที่ให้ (ไม่ลองที่อยู่อื่น)
 - `url` แบบ `demo://hotel-pms` คือข้อมูลตัวอย่างในตัว
 
 | | |

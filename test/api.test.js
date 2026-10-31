@@ -302,6 +302,78 @@ test('API: discovers another app\'s task API from the server', async (t) => {
   assert.deepEqual([task.title, task.status, task.externalId], ['ตรวจห้อง 1203', 'doing', 'J1']);
 });
 
+test('API: TaskFlow two-way sync (pull my-tasks, send status changes back)', async (t) => {
+  const S = require('../public/js/shared.js');
+  const { app, call } = await start();
+  // A stand-in for TaskFlow's external API, following the documented routes.
+  const tf = { 1116: { id: 1116, title: 'ตรวจรับของห้องครัว', status: 'TODO', dueDate: '2099-03-01' }, 1117: { id: 1117, title: 'สรุปยอดเบิกของ', status: 'IN_PROGRESS' } };
+  const patches = [];
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.headers['x-api-key'] !== 'tfk_test_key') {
+      res.writeHead(401);
+      return res.end('{"error":"invalid key"}');
+    }
+    const url = new URL(req.url, 'http://x');
+    if (req.method === 'GET' && url.pathname === '/api/external/my-tasks') {
+      const want = (url.searchParams.get('status') || '').split(',').filter(Boolean);
+      return res.end(JSON.stringify({ tasks: Object.values(tf).filter((x) => !want.length || want.includes(x.status)) }));
+    }
+    const m = url.pathname.match(/^\/api\/external\/tasks\/(\d+)$/);
+    if (req.method === 'PATCH' && m && tf[m[1]]) {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      return req.on('end', () => {
+        const patch = JSON.parse(body);
+        patches.push([Number(m[1]), patch.status]);
+        Object.assign(tf[m[1]], patch);
+        res.end(JSON.stringify({ task: tf[m[1]] }));
+      });
+    }
+    res.writeHead(404);
+    res.end('{}');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(async () => {
+    await app.close();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const values = { key: 'tfk_test_key', scope: 'open', done: 'DONE', url: base };
+  const conf = S.APP_CATALOG.find((a) => a.id === 'taskflow').build(values);
+  assert.equal(conf.url, `${base}/api/external/my-tasks?status=TODO,IN_PROGRESS`);
+  assert.equal(conf.headers['x-api-key'], 'tfk_test_key');
+
+  // reading the real response fills in where the list is and how fields map
+  const d = await call('POST', '/api/v1/connectors/discover', { url: conf.url, headers: conf.headers, exact: true });
+  assert.equal(d.body.tried, 1);
+  assert.equal(d.body.best.itemsPath, 'tasks');
+  assert.deepEqual(d.body.best.mapping, { title: 'title', due: 'dueDate', status: 'status', externalId: 'id' });
+
+  const c = await call('POST', '/api/v1/connectors', Object.assign({}, conf, { name: 'TaskFlow', app: 'taskflow', appValues: values, itemsPath: 'tasks', mapping: d.body.best.mapping }));
+  const id = c.body.connector.id;
+  assert.equal((await call('POST', `/api/v1/connectors/${id}/sync`)).body.created, 2);
+  const list = () => call('GET', `/api/v1/tasks?source=connector:${id}`).then((r) => r.body.tasks);
+  const byRef = async (ref) => (await list()).find((x) => x.externalId === ref);
+  assert.equal((await byRef('1117')).status, 'doing');
+  assert.equal(patches.length, 0, 'syncing does not echo statuses back');
+
+  // start and finish in X10 -> TaskFlow follows
+  const kitchen = await byRef('1116');
+  await call('PATCH', `/api/v1/tasks/${kitchen.id}`, { status: 'doing' });
+  await call('POST', `/api/v1/tasks/${kitchen.id}/complete`);
+  for (let i = 0; i < 50 && patches.length < 2; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(patches, [[1116, 'IN_PROGRESS'], [1116, 'DONE']]);
+
+  // finished in TaskFlow -> gone from the open list -> ticked in X10, without sending anything back
+  tf[1117].status = 'DONE';
+  await call('POST', `/api/v1/connectors/${id}/sync`);
+  const sums = await byRef('1117');
+  assert.deepEqual([sums.done, sums.status], [true, 'done']);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(patches.length, 2);
+});
+
 test('API: live stream sends events', async (t) => {
   const { app, base, call } = await start();
   t.after(() => app.close());

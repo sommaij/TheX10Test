@@ -1,6 +1,6 @@
 {
   "name": "x10-tasks",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "X10 Tasks — แอปจัดการงานประจำวันสำหรับมือถือ (PWA + แอป Android พร้อมวิดเจ็ตหน้าจอโฮม) พร้อม REST API, webhook และการดึงงานจาก API ของแอปอื่น",
   "private": true,
   "license": "UNLICENSED",
@@ -12,7 +12,8 @@
     "build:demo": "node scripts/build-demo.js",
     "icons": "node scripts/make-icons.js",
     "widget-previews": "node scripts/make-widget-previews.js",
-    "android": "bash android/build.sh"
+    "android": "bash android/build.sh",
+    "sheets-script": "node scripts/export-sheets-script.js"
   },
   "engines": {
     "node": ">=18.17"

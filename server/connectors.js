@@ -39,6 +39,27 @@ class ConnectorRunner {
     this.log = log;
     this.running = new Set();
     this.timer = null;
+    store.on('statusChanged', (task, from, origin) => this.writeBack(task, origin));
+  }
+
+  /** Tells the source app (e.g. TaskFlow) when a task's status changes in X10. */
+  async writeBack(task, origin) {
+    const c = this.store.db.connectors.find((x) => task.source === `connector:${x.id}`);
+    if (!c || origin === task.source) return null;
+    const req = S.writeBackRequest(c, task);
+    if (!req) return null;
+    let error = null;
+    try {
+      const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body, signal: AbortSignal.timeout(this.timeoutMs) });
+      if (!res.ok) error = `HTTP ${res.status}`;
+    } catch (e) {
+      error = e.message;
+    }
+    c.lastWriteAt = new Date().toISOString();
+    c.lastWriteError = error ? `ส่งสถานะ “${task.title}” ไม่สำเร็จ: ${error}` : null;
+    this.store.save();
+    if (error) this.log(`connector ${c.id} write-back failed: ${error}`);
+    return error;
   }
 
   async preview(config) {
@@ -80,6 +101,14 @@ class ConnectorRunner {
         const r = this.store.upsertTask(input, source);
         if (r.created) created++;
         else if (before && r.task !== before) updated++;
+      }
+      // Only open tasks are listed: one that is gone was finished in the other app.
+      if (connector.missingDone && !mapped.errors.length) {
+        const seen = new Set(mapped.items.map((f) => f.externalId));
+        for (const t of this.store.db.tasks.filter((x) => x.source === source.source && !x.done && x.externalId && !seen.has(x.externalId))) {
+          this.store.updateTask(t.id, { done: true }, source.source);
+          updated++;
+        }
       }
       Object.assign(connector, { lastSyncAt: new Date().toISOString(), lastStatus: 'ok', lastError: mapped.errors.length ? `${mapped.errors.length} รายการอ่านไม่ได้: ${mapped.errors[0].message}` : null, lastCount: mapped.items.length });
       this.store.save();
