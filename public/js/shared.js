@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
   const STATUSES = ['todo', 'doing', 'done'];
   const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
   const COLORS = ['blue', 'green', 'amber', 'rose', 'violet', 'slate'];
@@ -111,6 +111,7 @@
       return partsInZone(new Date(value < 1e12 ? value * 1000 : value), ctx.timeZone);
     }
     const s = String(value).trim();
+    if (/^\d{10}(\d{3})?$/.test(s)) return parseWhen(Number(s), ctx);
     const lower = s.toLowerCase();
     if (lower === 'today' || s === 'วันนี้') return { due: ctx.today };
     if (lower === 'tomorrow' || s === 'พรุ่งนี้') return { due: addDays(ctx.today, 1) };
@@ -646,6 +647,229 @@
     { id: 'general', name: 'งานทั่วไป', steps: [['วางแผน', ''], ['ลงมือทำ', ''], ['ตรวจทาน', ''], ['ส่งงาน', '']] },
   ];
 
+  // ---------- finding a task list in another app's API ----------
+  const FIELD_GUESS = {
+    title: ['title', 'name', 'subject', 'summary', 'task', 'task_name', 'taskName', 'text', 'content', 'label'],
+    notes: ['description', 'details', 'detail', 'notes', 'note', 'body', 'remark', 'remarks', 'desc'],
+    due: ['due', 'due_date', 'dueDate', 'deadline', 'due_at', 'dueAt', 'due_on', 'end_date', 'endDate', 'date', 'scheduled_at'],
+    time: ['time', 'due_time', 'dueTime'],
+    done: ['done', 'completed', 'is_done', 'isDone', 'is_completed', 'complete'],
+    status: ['status', 'state', 'stage'],
+    priority: ['priority', 'importance', 'urgency'],
+    externalId: ['id', '_id', 'uuid', 'gid', 'key', 'code', 'ref', 'number', 'task_id', 'taskId'],
+  };
+  function guessKey(obj, names) {
+    const keys = Object.keys(obj);
+    for (const n of names) {
+      const hit = keys.find((k) => k.toLowerCase() === n.toLowerCase());
+      if (hit && obj[hit] !== undefined) return hit;
+    }
+    return null;
+  }
+  /** Suggests a field mapping from one item, e.g. {title: 'name', due: 'due_on', externalId: 'gid'}. */
+  function inferMapping(item) {
+    const m = {};
+    if (!item || typeof item !== 'object') return m;
+    for (const field of Object.keys(FIELD_GUESS)) {
+      const k = guessKey(item, FIELD_GUESS[field]);
+      if (!k) continue;
+      const v = item[k];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        // {status: {status: "in progress"}}, {priority: {priority: "high"}}, {due: {date: "…"}}
+        const inner = guessKey(v, [field, 'name', 'value', 'date', 'datetime', 'label']);
+        if (inner && typeof v[inner] !== 'object') m[field] = `${k}.${inner}`;
+      } else if (!Array.isArray(v)) m[field] = k;
+    }
+    return m;
+  }
+  /** Finds the most task-like array of objects in a JSON response (up to 3 levels deep). */
+  function findTaskList(json) {
+    let best = null;
+    const consider = (arr, path) => {
+      const objs = arr.filter((x) => x && typeof x === 'object' && !Array.isArray(x));
+      if (!objs.length) return;
+      const titled = objs.filter((o) => {
+        const k = guessKey(o, FIELD_GUESS.title);
+        return k && (typeof o[k] === 'string' || typeof o[k] === 'number');
+      }).length;
+      if (!titled) return;
+      const score = (titled / arr.length) * 10 + Math.min(arr.length, 50) / 50 + (/task|todo|job|ticket|work|issue|card|item/i.test(path) ? 2 : 0);
+      if (!best || score > best.score) best = { itemsPath: path, items: arr, score };
+    };
+    const walk = (v, path, depth) => {
+      if (Array.isArray(v)) consider(v, path);
+      else if (v && typeof v === 'object' && depth < 3) {
+        for (const k of Object.keys(v)) walk(v[k], path ? `${path}.${k}` : k, depth + 1);
+      }
+    };
+    walk(json, '', 0);
+    if (!best) return null;
+    const first = best.items.find((x) => x && typeof x === 'object');
+    return { itemsPath: best.itemsPath, count: best.items.length, mapping: inferMapping(first), sample: first, score: best.score };
+  }
+
+  const DISCOVERY_PATHS = ['', '/api/tasks', '/api/v1/tasks', '/api/v2/tasks', '/api/todos', '/api/v1/todos', '/api/jobs', '/api/v1/jobs',
+    '/api/tickets', '/api/work-items', '/api/items', '/api/task', '/tasks', '/tasks.json', '/todos', '/rest/v1/tasks'];
+  const SPEC_PATHS = ['/openapi.json', '/swagger.json', '/api/openapi.json', '/api/swagger.json', '/api-docs', '/v3/api-docs', '/api/docs.json', '/docs/openapi.json'];
+
+  /**
+   * Looks for another app's task API: reads OpenAPI/Swagger specs if published and tries the usual paths.
+   * fetchImpl(url, {headers}) must resolve to {status, headers.get(), text()}; works with window.fetch,
+   * Node's fetch or the Android app's direct fetch (no CORS limits).
+   */
+  async function discoverApi(baseUrl, headers, opts) {
+    const fetchImpl = opts.fetch;
+    const timeoutMs = opts.timeoutMs || 6000;
+    const base = String(baseUrl).trim().replace(/\/+$/, '');
+    const origin = new URL(base).origin;
+    const seen = new Set();
+    const result = { base, tried: 0, found: [], needsKey: [], specs: [], errors: [] };
+
+    const probe = async (url) => {
+      if (seen.has(url)) return null;
+      seen.add(url);
+      result.tried++;
+      try {
+        let timer;
+        const res = await Promise.race([
+          fetchImpl(url, { headers: Object.assign({ Accept: 'application/json' }, headers || {}) }),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+          }),
+        ]).finally(() => clearTimeout(timer));
+        const text = String(await res.text()).slice(0, 2000000);
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch (e) {
+          /* not JSON */
+        }
+        return { url, status: res.status, json, html: /^\s*</.test(text) };
+      } catch (e) {
+        result.errors.push({ url, message: e.message });
+        return null;
+      }
+    };
+    const run = async (urls) => {
+      const out = [];
+      for (let i = 0; i < urls.length; i += 6) out.push(...(await Promise.all(urls.slice(i, i + 6).map(probe))));
+      return out.filter(Boolean);
+    };
+    const judge = (r) => {
+      if (r.status === 401 || r.status === 403) result.needsKey.push({ url: r.url, status: r.status });
+      else if (r.status >= 200 && r.status < 300 && r.json) {
+        const list = findTaskList(r.json);
+        if (list) result.found.push(Object.assign({ url: r.url }, list, { sample: list.sample }));
+      }
+    };
+
+    // 1. published API descriptions
+    const specs = await run(SPEC_PATHS.map((p) => origin + p));
+    const fromSpecs = [];
+    for (const r of specs) {
+      if (!(r.status >= 200 && r.status < 300 && r.json && r.json.paths)) continue;
+      const schemes = (r.json.components && r.json.components.securitySchemes) || r.json.securityDefinitions || {};
+      const auth = Object.values(schemes).map((x) => (x.type === 'apiKey' ? `คีย์ใน ${x.in === 'query' ? 'query' : 'header'} ชื่อ ${x.name}` : x.scheme ? `Authorization: ${x.scheme}` : x.type)).join(', ');
+      let server = origin;
+      if (r.json.servers && r.json.servers[0] && r.json.servers[0].url) server = new URL(r.json.servers[0].url, origin).href.replace(/\/+$/, '');
+      else if (r.json.basePath) server = origin + String(r.json.basePath).replace(/\/+$/, '');
+      result.specs.push({ url: r.url, auth, paths: Object.keys(r.json.paths).length });
+      for (const p of Object.keys(r.json.paths)) {
+        if (r.json.paths[p].get && !p.includes('{') && /task|todo|job|ticket|work|issue|card|item/i.test(p)) fromSpecs.push(server + p);
+      }
+    }
+    // 2. what the spec lists, then the usual places
+    const pathUrls = DISCOVERY_PATHS.map((p) => (p ? origin + p : base));
+    (await run(fromSpecs.concat(pathUrls))).forEach(judge);
+    result.found.sort((a, b) => b.score - a.score);
+    result.best = result.found[0] || null;
+    return result;
+  }
+
+  // ---------- connecting other apps with their API keys ----------
+  const enc = (v) => encodeURIComponent(String(v || '').trim());
+  /**
+   * Apps people connect by pasting an API key. Each builds a connector config from what was typed in.
+   * Field type "secret" is never shown again after saving.
+   */
+  const APP_CATALOG = [
+    {
+      id: 'taskflow', name: 'TaskFlow', badge: 'TF', color: '#0a7a70',
+      desc: 'ระบบงาน taskflow.thex10smile.com',
+      help: 'ขอ API key จากผู้ดูแลระบบ TaskFlow แล้วกด “ค้นหา API อัตโนมัติ” ระบบจะหาที่อยู่รายการงานและจับคู่ฟิลด์ให้',
+      discover: true,
+      fields: [
+        { id: 'url', label: 'ที่อยู่ระบบ TaskFlow', type: 'url', value: 'https://taskflow.thex10smile.com' },
+        { id: 'key', label: 'API key', type: 'secret', optional: true },
+        { id: 'auth', label: 'ส่งคีย์แบบ', type: 'select', options: [['bearer', 'Authorization: Bearer คีย์'], ['x-api-key', 'X-API-Key: คีย์'], ['raw', 'Authorization: คีย์']], value: 'bearer' },
+      ],
+      build: (v) => ({
+        url: v.endpoint || v.url,
+        headers: v.key ? (v.auth === 'x-api-key' ? { 'X-API-Key': v.key } : { Authorization: v.auth === 'raw' ? v.key : `Bearer ${v.key}` }) : {},
+        itemsPath: v.itemsPath || '',
+        mapping: v.mapping || {},
+      }),
+    },
+    {
+      id: 'trello', name: 'Trello', badge: 'T', color: '#0c66e4',
+      desc: 'การ์ดในบอร์ด Trello',
+      help: 'API key และ Token สร้างได้ที่ trello.com/power-ups/admin ส่วน Board ID อยู่ในลิงก์บอร์ด trello.com/b/<Board ID>/…',
+      fields: [
+        { id: 'key', label: 'API key', type: 'secret' },
+        { id: 'token', label: 'Token', type: 'secret' },
+        { id: 'board', label: 'Board ID', type: 'text', placeholder: 'เช่น a1B2c3D4' },
+      ],
+      build: (v) => ({
+        url: `https://api.trello.com/1/boards/${enc(v.board)}/cards?fields=name,desc,due,dueComplete&key=${enc(v.key)}&token=${enc(v.token)}`,
+        headers: {}, itemsPath: '',
+        mapping: { title: 'name', notes: 'desc', due: 'due', done: 'dueComplete', externalId: 'id' },
+      }),
+    },
+    {
+      id: 'clickup', name: 'ClickUp', badge: 'CU', color: '#7b68ee',
+      desc: 'งานใน List ของ ClickUp',
+      help: 'Personal API token อยู่ที่ ClickUp → Settings → Apps (ขึ้นต้นด้วย pk_) ส่วน List ID ดูจากลิงก์ของ List',
+      fields: [
+        { id: 'key', label: 'Personal API token', type: 'secret', placeholder: 'pk_…' },
+        { id: 'list', label: 'List ID', type: 'text', placeholder: 'เช่น 901234567' },
+      ],
+      build: (v) => ({
+        url: `https://api.clickup.com/api/v2/list/${enc(v.list)}/task?include_closed=true&subtasks=true`,
+        headers: { Authorization: String(v.key || '').trim() }, itemsPath: 'tasks',
+        mapping: { title: 'name', notes: 'description', due: 'due_date', status: 'status.status', priority: 'priority.priority', externalId: 'id' },
+      }),
+    },
+    {
+      id: 'asana', name: 'Asana', badge: 'A', color: '#f06a6a',
+      desc: 'งานในโปรเจกต์ Asana',
+      help: 'Personal access token สร้างได้ที่ Asana → My settings → Apps → Developer apps ส่วน Project ID เป็นตัวเลขในลิงก์โปรเจกต์',
+      fields: [
+        { id: 'key', label: 'Personal access token', type: 'secret' },
+        { id: 'project', label: 'Project ID', type: 'text', placeholder: 'เช่น 1204567890123456' },
+      ],
+      build: (v) => ({
+        url: `https://app.asana.com/api/1.0/tasks?project=${enc(v.project)}&opt_fields=name,notes,due_on,completed&limit=100`,
+        headers: { Authorization: `Bearer ${String(v.key || '').trim()}` }, itemsPath: 'data',
+        mapping: { title: 'name', notes: 'notes', due: 'due_on', done: 'completed', externalId: 'gid' },
+      }),
+    },
+    {
+      id: 'github', name: 'GitHub Issues', badge: 'GH', color: '#24292f',
+      desc: 'Issue ใน repository',
+      help: 'Token สร้างได้ที่ GitHub → Settings → Developer settings → Personal access tokens (สิทธิ์อ่าน Issues) ใส่ repository แบบ owner/repo',
+      fields: [
+        { id: 'key', label: 'Personal access token', type: 'secret', optional: true },
+        { id: 'repo', label: 'Repository', type: 'text', placeholder: 'owner/repo' },
+      ],
+      build: (v) => ({
+        url: `https://api.github.com/repos/${String(v.repo || '').trim().split('/').map(enc).join('/')}/issues?state=all&per_page=50`,
+        headers: Object.assign({ Accept: 'application/vnd.github+json' }, v.key ? { Authorization: `Bearer ${String(v.key).trim()}` } : {}),
+        itemsPath: '',
+        mapping: { title: 'title', notes: 'body', status: 'state', externalId: 'number' },
+      }),
+    },
+  ];
+
   // Built-in sample feed so the import screen can be tried without another system.
   function demoFeed(name, today) {
     if (name !== 'hotel-pms') return null;
@@ -695,6 +919,7 @@
     ValidationError, uid, randomHex, pad, parseStatus, statusOf, compareTasks, buckets, nextUp, widgetPayload,
     stepInfo, completeStep, STEP_TEMPLATES,
     ACCENTS, mix, contrast, accentTheme, categoryHex, validColor,
+    inferMapping, findTaskList, discoverApi, APP_CATALOG,
     partsInZone, todayIn, addDays, addMonths, weekday, isValidDate,
     parseWhen, parseTime, parseReminder, parseRepeat, parsePriority, parseDone, parseSubtasks,
     resolveCategory, normalizeFields, createTask, patchTask, nextDue, setDone,

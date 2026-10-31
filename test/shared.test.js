@@ -205,3 +205,63 @@ test('custom category colours reach the widget payload', () => {
   assert.equal(S.categoryHex('blue'), S.COLOR_HEX.blue);
   assert.ok(S.validColor('#123abc') && S.validColor('rose') && !S.validColor('red'));
 });
+
+test('finds the task list and suggests a mapping', () => {
+  const r = S.findTaskList({ ok: true, data: { meta: { page: 1 }, items: [
+    { uuid: 'a1', name: 'ซ่อมไฟ', state: 'in_progress', deadline: '2026-11-02', detail: 'ห้อง 305' },
+    { uuid: 'a2', name: 'ล้างสระ', state: 'open', deadline: '2026-11-03' },
+  ] } });
+  assert.equal(r.itemsPath, 'data.items');
+  assert.equal(r.count, 2);
+  assert.deepEqual(r.mapping, { title: 'name', notes: 'detail', due: 'deadline', status: 'state', externalId: 'uuid' });
+  assert.equal(S.findTaskList({ users: [{ email: 'x' }] }), null);
+  assert.deepEqual(S.inferMapping({ name: 'x', status: { status: 'in progress' }, priority: { priority: 'high' } }), { title: 'name', status: 'status.status', priority: 'priority.priority' });
+});
+
+test('discovers an API from its OpenAPI spec and reports when a key is needed', async () => {
+  const spec = { openapi: '3.0.0', servers: [{ url: '/api' }], components: { securitySchemes: { k: { type: 'apiKey', in: 'header', name: 'X-API-Key' } } },
+    paths: { '/work-items': { get: {} }, '/work-items/{id}': { get: {} }, '/users': { get: {} } } };
+  const items = { results: [{ id: 7, title: 'ตรวจห้อง 1203', due_date: '2026-11-01', status: 'todo' }] };
+  const fakeFetch = async (url, { headers }) => {
+    const reply = (status, body) => ({ status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
+    if (url === 'https://tf.example/openapi.json') return reply(200, spec);
+    if (url === 'https://tf.example/api/work-items') return headers['X-API-Key'] === 'k1' ? reply(200, items) : reply(401, { error: 'no key' });
+    if (url === 'https://tf.example') return reply(200, '<!doctype html><html></html>');
+    return reply(404, 'not found');
+  };
+  const noKey = await S.discoverApi('https://tf.example/', {}, { fetch: fakeFetch });
+  assert.equal(noKey.best, null);
+  assert.deepEqual(noKey.needsKey.map((x) => x.url), ['https://tf.example/api/work-items']);
+  assert.match(noKey.specs[0].auth, /X-API-Key/);
+  const withKey = await S.discoverApi('https://tf.example', { 'X-API-Key': 'k1' }, { fetch: fakeFetch });
+  assert.equal(withKey.best.url, 'https://tf.example/api/work-items');
+  assert.equal(withKey.best.itemsPath, 'results');
+  assert.deepEqual(withKey.best.mapping, { title: 'title', due: 'due_date', status: 'status', externalId: 'id' });
+});
+
+test('app templates turn each app\'s documented response into tasks', () => {
+  const app = (id) => S.APP_CATALOG.find((a) => a.id === id);
+  const check = (id, values, response) => {
+    const conf = app(id).build(values);
+    return { conf, items: S.mapResponse(response, conf, ctx).items };
+  };
+  const trello = check('trello', { key: 'K', token: 'T', board: 'b1' }, [{ id: 'c1', name: 'จัดดอกไม้ล็อบบี้', desc: 'โทนขาว', due: '2026-11-01T03:00:00.000Z', dueComplete: false }]);
+  assert.match(trello.conf.url, /boards\/b1\/cards.*key=K&token=T/);
+  assert.deepEqual([trello.items[0].title, trello.items[0].due, trello.items[0].time, trello.items[0].done], ['จัดดอกไม้ล็อบบี้', '2026-11-01', '10:00', false]);
+
+  const clickup = check('clickup', { key: 'pk_1', list: '99' }, { tasks: [{ id: 'x9', name: 'ซ่อมปั๊มน้ำ', description: '', due_date: '1793404800000', status: { status: 'in progress' }, priority: { priority: 'urgent' } }] });
+  assert.equal(clickup.conf.headers.Authorization, 'pk_1');
+  assert.deepEqual([clickup.items[0].status, clickup.items[0].priority, clickup.items[0].due], ['doing', 2, '2026-10-31']);
+
+  const asana = check('asana', { key: 'tok', project: '123' }, { data: [{ gid: '555', name: 'ประชุมทีมขาย', notes: 'วาระ Q4', due_on: '2026-11-04', completed: true }] });
+  assert.equal(asana.conf.headers.Authorization, 'Bearer tok');
+  assert.deepEqual([asana.items[0].title, asana.items[0].due, asana.items[0].done, asana.items[0].externalId], ['ประชุมทีมขาย', '2026-11-04', true, '555']);
+
+  const gh = check('github', { repo: 'sommaij/TheX10Test' }, [{ number: 12, title: 'แก้สีปุ่ม', body: 'ปุ่มบันทึก', state: 'closed' }]);
+  assert.match(gh.conf.url, /repos\/sommaij\/TheX10Test\/issues/);
+  assert.equal(gh.conf.headers.Authorization, undefined);
+  assert.deepEqual([gh.items[0].status, gh.items[0].done, gh.items[0].externalId], ['done', true, '12']);
+
+  const tf = app('taskflow').build({ url: 'https://taskflow.thex10smile.com', key: 'abc', auth: 'x-api-key', endpoint: 'https://taskflow.thex10smile.com/api/tasks', itemsPath: 'data' });
+  assert.deepEqual([tf.url, tf.headers['X-API-Key'], tf.itemsPath], ['https://taskflow.thex10smile.com/api/tasks', 'abc', 'data']);
+});

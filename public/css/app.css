@@ -955,3 +955,44 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .link-card .btn { align-self: flex-start; }
 .hint.warn { color: var(--warn); font-weight: 600; }
 .hint.warn .i { color: var(--warn); }
+
+/* ---------- connect apps with API keys ---------- */
+.back-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; padding: 4px 0; font-weight: 600; font-size: 14px; color: var(--accent); }
+.back-link .i { width: 18px; height: 18px; }
+.link-panel { flex-direction: row; align-items: center; gap: 12px; text-align: left; cursor: pointer; width: 100%; color: var(--ink); }
+.link-panel > .i { color: var(--ink-3); }
+.link-panel-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.45; }
+.link-panel-text strong { font-family: var(--font-display); font-weight: 500; font-size: 17px; }
+.link-panel-text span { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.app-card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; text-align: left;
+  padding: 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.app-card:hover { border-color: var(--accent); }
+.app-card:disabled { opacity: 0.5; cursor: not-allowed; }
+.app-name { font-weight: 700; font-size: 15px; margin-top: 4px; }
+.app-desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; overflow-wrap: anywhere; max-width: 100%; }
+.app-on { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 700; color: var(--ok); margin-top: 2px; }
+.app-on .i { width: 13px; height: 13px; stroke-width: 3; }
+.app-badge {
+  width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0;
+  background: var(--app); color: #ffffff; font: 700 14px/1 var(--font-body); letter-spacing: 0.02em;
+}
+.app-badge .i { width: 20px; height: 20px; }
+.ok-text { color: var(--ok); font-weight: 600; }
+.secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.secret-row input { font-family: var(--font-mono); font-size: 13.5px !important; }
+.discover { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.discover .btn { align-self: stretch; }
+#af-discovered:empty { display: none; }
+#af-discovered { width: 100%; }
+.found { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: var(--ok-soft); }
+.found.none { background: var(--danger-soft); }
+.found .muted { font-size: 13px; overflow-wrap: anywhere; }
+.found-line { font-weight: 600; font-size: 14px; color: var(--ok); overflow-wrap: anywhere; min-width: 0; }
+.found-line .i { width: 17px; height: 17px; vertical-align: -3px; margin-right: 4px; }
+.found-line code, .found code { overflow-wrap: anywhere; }
+.link-btn.accent { color: var(--accent); font-weight: 600; text-decoration: underline; }
+.block-row { margin-top: 4px; }
+.block-row .btn { flex: 1 1 auto; }

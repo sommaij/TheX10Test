@@ -98,6 +98,16 @@ public class MainActivity extends Activity {
         else if ("filter".equals(host)) run("X10App.filter(" + JSONObject.quote(arg) + ")");
     }
 
+    /** Runs JavaScript in the page from any thread (used by the bridge's network replies). */
+    void runJs(final String js) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (web != null) web.evaluateJavascript(js, null);
+            }
+        });
+    }
+
     private void run(String js) {
         String guarded = "window.X10App && " + js;
         if (loaded) web.evaluateJavascript(guarded, null);

@@ -377,11 +377,17 @@ function cleanConnector(body, isNew) {
   if (isNew || body.mapping !== undefined) {
     const m = body.mapping && typeof body.mapping === 'object' ? body.mapping : {};
     out.mapping = {};
-    for (const k of ['title', 'notes', 'due', 'time', 'priority', 'done', 'externalId', 'category', 'reminder']) {
+    for (const k of ['title', 'notes', 'due', 'time', 'priority', 'done', 'status', 'externalId', 'category', 'reminder']) {
       if (typeof m[k] === 'string' && m[k].trim()) out.mapping[k] = m[k].trim();
     }
   }
   if (isNew || body.category !== undefined) out.category = body.category ? String(body.category) : null;
+  // Which app from the catalog this is, and what was typed into its form (keys included; admin-only).
+  if (isNew || body.app !== undefined) out.app = /^[a-z0-9-]{1,30}$/.test(body.app || '') ? body.app : null;
+  if (isNew || body.appValues !== undefined) {
+    const v = body.appValues && typeof body.appValues === 'object' ? body.appValues : {};
+    out.appValues = Object.fromEntries(Object.entries(v).filter(([k, x]) => /^[\w-]{1,30}$/.test(k) && typeof x === 'string').slice(0, 12).map(([k, x]) => [k, x.slice(0, 2000)]));
+  }
   if (isNew || body.interval !== undefined) out.interval = Math.max(0, Math.min(1440, Number(body.interval) || 0));
   if (body.active !== undefined) out.active = !!body.active;
   return out;

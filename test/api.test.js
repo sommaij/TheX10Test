@@ -263,6 +263,45 @@ test('API: connectors pull tasks from another app and do not duplicate', async (
   assert.match(s3.body.error.message, /401/);
 });
 
+test('API: discovers another app\'s task API from the server', async (t) => {
+  const { app, call } = await start();
+  const other = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/swagger.json') return res.end(JSON.stringify({ swagger: '2.0', basePath: '/v2', securityDefinitions: { b: { type: 'apiKey', in: 'header', name: 'Authorization' } }, paths: { '/jobs': { get: {} } } }));
+    if (req.url === '/v2/jobs') {
+      if (req.headers.authorization !== 'Bearer tf-key') {
+        res.writeHead(401);
+        return res.end('{}');
+      }
+      return res.end(JSON.stringify({ data: [{ job_id: 'J1', title: 'ตรวจห้อง 1203', deadline: '2099-01-02', stage: 'doing' }] }));
+    }
+    res.writeHead(404);
+    res.end('{}');
+  });
+  await new Promise((r) => other.listen(0, '127.0.0.1', r));
+  t.after(async () => {
+    await app.close();
+    other.close();
+  });
+  const base = `http://127.0.0.1:${other.address().port}`;
+  const noKey = await call('POST', '/api/v1/connectors/discover', { url: base });
+  assert.equal(noKey.body.best, null);
+  assert.equal(noKey.body.needsKey[0].url, `${base}/v2/jobs`);
+  const r = await call('POST', '/api/v1/connectors/discover', { url: base, headers: { Authorization: 'Bearer tf-key' } });
+  assert.equal(r.body.best.url, `${base}/v2/jobs`);
+  assert.equal(r.body.best.itemsPath, 'data');
+  assert.equal(r.body.best.mapping.status, 'stage');
+
+  // save it as an app connection and sync
+  const c = await call('POST', '/api/v1/connectors', { name: 'TaskFlow', app: 'taskflow', appValues: { url: base, key: 'tf-key' }, url: r.body.best.url, headers: { Authorization: 'Bearer tf-key' }, itemsPath: 'data', mapping: Object.assign({ externalId: 'job_id' }, r.body.best.mapping) });
+  assert.equal(c.body.connector.app, 'taskflow');
+  assert.equal(c.body.connector.mapping.status, 'stage');
+  const s = await call('POST', `/api/v1/connectors/${c.body.connector.id}/sync`);
+  assert.equal(s.body.created, 1);
+  const task = (await call('GET', `/api/v1/tasks?source=connector:${c.body.connector.id}`)).body.tasks[0];
+  assert.deepEqual([task.title, task.status, task.externalId], ['ตรวจห้อง 1203', 'doing', 'J1']);
+});
+
 test('API: live stream sends events', async (t) => {
   const { app, base, call } = await start();
   t.after(() => app.close());

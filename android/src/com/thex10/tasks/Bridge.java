@@ -12,10 +12,19 @@ import android.os.Build;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Iterator;
 
 /** window.X10Native — what the web app can ask of the Android app. */
 final class Bridge {
@@ -131,6 +140,62 @@ final class Bridge {
         } catch (RuntimeException e) {
             // no app can open this link
         }
+    }
+
+    /**
+     * HTTP for talking to other apps' APIs from the phone itself, so their CORS rules do not apply.
+     * The answer comes back through X10App.httpResult(id, {status, contentType, body} or {error}).
+     */
+    @JavascriptInterface
+    public void httpRequest(final String id, final String method, final String url, final String headersJson, final String body) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                JSONObject out = new JSONObject();
+                HttpURLConnection conn = null;
+                try {
+                    if (!url.startsWith("https://") && !url.startsWith("http://")) throw new IOException("URL must start with http:// or https://");
+                    conn = (HttpURLConnection) new URL(url).openConnection();
+                    conn.setRequestMethod("POST".equals(method) ? "POST" : "GET");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(15000);
+                    conn.setInstanceFollowRedirects(true);
+                    JSONObject h = new JSONObject(headersJson == null || headersJson.isEmpty() ? "{}" : headersJson);
+                    Iterator<String> keys = h.keys();
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        conn.setRequestProperty(k, h.optString(k));
+                    }
+                    if ("POST".equals(method) && body != null && !body.isEmpty()) {
+                        conn.setDoOutput(true);
+                        OutputStream os = conn.getOutputStream();
+                        os.write(body.getBytes("UTF-8"));
+                        os.close();
+                    }
+                    int status = conn.getResponseCode();
+                    InputStream in = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                    if (in != null) {
+                        byte[] chunk = new byte[8192];
+                        int n;
+                        while ((n = in.read(chunk)) > 0 && buf.size() < 2 * 1024 * 1024) buf.write(chunk, 0, n);
+                        in.close();
+                    }
+                    out.put("status", status);
+                    out.put("contentType", conn.getContentType() == null ? "" : conn.getContentType());
+                    out.put("body", buf.toString("UTF-8"));
+                } catch (Exception e) {
+                    try {
+                        out.put("error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    } catch (JSONException ignored) {
+                        // cannot happen with a string value
+                    }
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
+                activity.runJs("window.X10App && X10App.httpResult(" + JSONObject.quote(id) + "," + JSONObject.quote(out.toString()) + ")");
+            }
+        }).start();
     }
 
     @JavascriptInterface

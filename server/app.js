@@ -249,6 +249,15 @@ function createApp(options = {}) {
       throw new HttpError(502, 'fetch_failed', e.message);
     }
   });
+  // Looks for another app's task API (OpenAPI specs, usual paths) from the server, where CORS does not apply.
+  route('POST', '/api/v1/connectors/discover', 'admin', async ({ body }) => {
+    const url = checkUrl(body.url);
+    const headers = body.headers && typeof body.headers === 'object' ? Object.fromEntries(Object.entries(body.headers).filter(([k, v]) => /^[\w-]+$/.test(k) && typeof v === 'string')) : {};
+    const r = await S.discoverApi(url, headers, { fetch: (u, o) => fetch(u, Object.assign({ redirect: 'follow' }, o)), timeoutMs: 6000 });
+    r.found = r.found.slice(0, 6).map(({ items, ...rest }) => rest);
+    r.best = r.found[0] || null;
+    return r;
+  });
   route('POST', '/api/v1/connectors', 'admin', ({ body, res }) => {
     res.statusCode = 201;
     return { connector: store.createConnector(body) };

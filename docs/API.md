@@ -242,10 +242,14 @@ function verify(rawBody, header, secret) {
 - `mapping` แต่ละช่องเป็น path (`a.b.0.c`) หรือข้อความที่มี `{{path}}` ช่องที่เว้นไว้จะหาจากชื่อฟิลด์ทั่วไปให้อัตโนมัติ
 - `externalId` ใช้กันงานซ้ำ ซิงก์รอบถัดไปจะอัปเดตงานเดิม ถ้าต้นทางบอกว่าเสร็จ งานจะถูกติ๊กเสร็จให้ แต่งานที่ติ๊กเสร็จในแอปแล้วจะไม่ถูกเปลี่ยนกลับ
 - `interval` นาที (`0` = กดซิงก์เอง)
+- `mapping` ใช้ `status` ได้ด้วย (เช่น `"status.status"` ของ ClickUp หรือ `"state"` ของ GitHub)
+- `app` และ `appValues` (ไม่บังคับ) เก็บว่าเป็นแอปไหนในหน้า “เชื่อมต่อแอปด้วย API key” และค่าที่กรอก (รวมคีย์) อ่านได้เฉพาะคีย์ผู้ดูแล
+- วันที่แบบ timestamp เป็นข้อความ (`"1793404800000"`) ก็อ่านได้
 - `url` แบบ `demo://hotel-pms` คือข้อมูลตัวอย่างในตัว
 
 | | |
 |---|---|
+| `POST /connectors/discover` | `{ "url": "https://taskflow.example.com", "headers": { "X-API-Key": "…" } }` → ค้นหา API รายการงาน: อ่าน OpenAPI/Swagger (`/openapi.json`, `/swagger.json`, `/api-docs` …) และลองที่อยู่ที่ใช้บ่อย (`/api/tasks`, `/api/v1/tasks`, `/tasks` …) → `{ "best": { "url", "itemsPath", "count", "mapping", "sample" }, "found": [...], "needsKey": [{ "url", "status" }], "specs": [{ "url", "auth" }], "tried" }` |
 | `POST /connectors/preview` | ส่ง config เดียวกัน → ดูผลแปลงโดยไม่บันทึก `{ "total", "items", "errors", "sample" }` |
 | `GET /connectors` · `POST /connectors` · `PATCH /connectors/:id` · `DELETE /connectors/:id` | จัดการ |
 | `POST /connectors/:id/sync` | ซิงก์ทันที → `{ "created": 2, "updated": 1, "total": 3, "errors": [] }` |

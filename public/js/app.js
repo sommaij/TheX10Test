@@ -70,6 +70,7 @@
     right: '<path d="M9 5l7 7-7 7"/>',
     down: '<path d="M6 9l6 6 6-6"/>',
     up: '<path d="M6 15l6-6 6 6"/>',
+    eye: '<path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.8 0-.9.7-1.5 1.7-1.5h2.2a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.6" cy="11" r="1.1"/><circle cx="10" cy="7.3" r="1.1"/><circle cx="14.5" cy="7.3" r="1.1"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
@@ -561,6 +562,36 @@
     },
   };
 
+  // ---------- HTTP for talking to other apps ----------
+  // In the Android app requests go through the phone directly, so other apps' CORS rules do not apply.
+  const pendingHttp = new Map();
+  let httpSeq = 0;
+  function nativeFetch(url, opts = {}) {
+    return new Promise((resolve, reject) => {
+      const id = `h${++httpSeq}`;
+      pendingHttp.set(id, { resolve, reject });
+      NATIVE.httpRequest(id, opts.method || 'GET', url, JSON.stringify(opts.headers || {}), opts.body || '');
+      setTimeout(() => {
+        if (pendingHttp.delete(id)) reject(new Error('ระบบปลายทางไม่ตอบกลับ'));
+      }, 20000);
+    });
+  }
+  function httpResult(id, raw) {
+    const p = pendingHttp.get(id);
+    if (!p) return;
+    pendingHttp.delete(id);
+    const r = safeJson(raw);
+    if (r.error) return p.reject(new Error(r.error));
+    p.resolve({
+      ok: r.status >= 200 && r.status < 300,
+      status: r.status,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? r.contentType || null : null) },
+      text: async () => r.body || '',
+      json: async () => JSON.parse(r.body || 'null'),
+    });
+  }
+  const httpFetch = (url, opts) => (NATIVE && typeof NATIVE.httpRequest === 'function' ? nativeFetch(url, opts) : fetch(url, opts));
+
   // ---------- connectors running in the browser (when not connected to the server) ----------
   async function fetchFeed(conf) {
     if (conf.url.startsWith('demo://')) {
@@ -570,7 +601,7 @@
     }
     let res;
     try {
-      res = await fetch(conf.url, {
+      res = await httpFetch(conf.url, {
         method: conf.method === 'POST' ? 'POST' : 'GET',
         headers: Object.assign({ Accept: 'application/json' }, conf.headers || {}),
         body: conf.method === 'POST' && conf.body ? conf.body : undefined,
@@ -1204,7 +1235,9 @@
       <section class="panel">
         <div class="panel-head"><span class="panel-icon">${icon('inbox')}</span><div><h2>ดึงงานจาก API ของแอปอื่น</h2><p>นำเข้างานจากระบบห้องพัก ระบบแจ้งซ่อม Google Sheets หรือ API ใดก็ได้ที่ส่ง JSON</p></div></div>
         ${connectors}
-        ${!srv || admin ? `<button type="button" class="btn ghost block" data-action="new-connector">${icon('plus')} เพิ่มแหล่งข้อมูล</button>` : ''}
+        ${!srv || admin ? `<div class="btn-row block-row">
+          <button type="button" class="btn primary" data-action="go" data-view="apps">${icon('key')} เชื่อมต่อแอปด้วย API key</button>
+          <button type="button" class="btn ghost" data-action="new-connector">${icon('plus')} กรอก API เอง</button></div>` : ''}
       </section>
       <section class="panel">
         <div class="panel-head"><span class="panel-icon">${icon('key')}</span><div><h2>ลิงก์ API ให้แอปอื่นส่งงานเข้ามา</h2><p>แต่ละแอปได้ลิงก์และคีย์ของตัวเอง กำหนดสิทธิ์และวันหมดอายุได้ ยกเลิกได้ทุกเมื่อ</p></div></div>
@@ -1231,7 +1264,7 @@
     } catch (e) {
       ui.remote.error = e.message;
     }
-    if (ui.view === 'connect') render();
+    if (ui.view === 'connect' || ui.view === 'apps') render();
   }
 
   // ---------- home-screen widget previews (same layout as the Android widgets) ----------
@@ -1309,6 +1342,253 @@
     </section>`;
   }
 
+  // ---------- connect other apps with their API keys (settings page) ----------
+  const appOf = (id) => S.APP_CATALOG.find((a) => a.id === id) || null;
+  const connectorList = () => (Sync.on ? ui.remote.connectors : state.connectors);
+  const appBadge = (app, small) => `<span class="app-badge${small ? ' small' : ''}" style="--app:${app ? app.color : 'var(--ink-3)'}">${app ? esc(app.badge) : icon('plug')}</span>`;
+
+  function connectedRows() {
+    const list = connectorList();
+    if (!list.length) return '<div class="empty small"><p>ยังไม่ได้เชื่อมต่อแอปไหน เลือกแอปด้านล่างแล้วใส่ API key</p></div>';
+    return `<ul class="rows">${list.map((c) => {
+      const app = appOf(c.app);
+      return `<li class="row-item">
+        ${appBadge(app)}
+        <div class="row-main">
+          <strong>${esc(c.name)}</strong>
+          <span class="row-sub">${c.lastStatus === 'error' ? `<em class="bad">เชื่อมต่อไม่สำเร็จ: ${esc(c.lastError)}</em>` : c.lastSyncAt ? `<span class="ok-text">เชื่อมต่อแล้ว</span> · ซิงก์ ${esc(ago(c.lastSyncAt))} · ${c.lastCount} งาน` : 'ยังไม่เคยซิงก์'}${c.interval ? ` · ทุก ${intervalLabel(c.interval)}` : ''}</span>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="icon-btn small" data-action="sync-connector" data-id="${esc(c.id)}" data-remote="${Sync.on ? 1 : 0}" aria-label="ซิงก์ ${esc(c.name)} ตอนนี้">${icon('refresh')}</button>
+          <button type="button" class="icon-btn small" data-action="edit-connector" data-id="${esc(c.id)}" aria-label="ตั้งค่า ${esc(c.name)}">${icon('edit')}</button>
+        </div>
+      </li>`;
+    }).join('')}</ul>`;
+  }
+
+  function viewApps() {
+    const srv = state.settings.server;
+    const locked = srv && srv.role === 'app';
+    const used = new Set(connectorList().map((c) => c.app).filter(Boolean));
+    return `
+      <header class="page-head">
+        <button type="button" class="back-link" data-action="go" data-view="options">${icon('left')} ตั้งค่า</button>
+        <h1>เชื่อมต่อแอปด้วย API key</h1>
+        <p class="lede">ใส่ API key ของแอปที่ใช้อยู่ X10 Tasks จะดึงงานเข้ามาให้อัตโนมัติ แสดงสถานะ ขั้นตอน และขึ้นบนวิดเจ็ตเหมือนงานอื่น</p>
+      </header>
+      ${locked ? '<p class="error-line">เครื่องนี้เชื่อมต่อเซิร์ฟเวอร์ด้วยคีย์แอป ต้องใช้คีย์ผู้ดูแลจึงจะตั้งค่าการเชื่อมต่อได้</p>' : ''}
+      <section class="panel">
+        <h2>แอปที่เชื่อมต่อแล้ว</h2>
+        ${connectedRows()}
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span class="panel-icon">${icon('key')}</span><div><h2>เพิ่มแอป</h2><p>เลือกแอป ใส่ API key แล้วกดทดสอบก่อนบันทึก คีย์จะถูกซ่อนหลังบันทึก</p></div></div>
+        <div class="app-grid">
+          ${S.APP_CATALOG.map((a) => `<button type="button" class="app-card" data-action="setup-app" data-app="${a.id}"${locked ? ' disabled' : ''}>
+            ${appBadge(a)}<span class="app-name">${esc(a.name)}</span><span class="app-desc">${esc(a.desc)}</span>
+            ${used.has(a.id) ? `<span class="app-on">${icon('check')} เชื่อมต่อแล้ว</span>` : ''}</button>`).join('')}
+          <button type="button" class="app-card" data-action="new-connector"${locked ? ' disabled' : ''}>
+            ${appBadge(null)}<span class="app-name">API อื่น ๆ</span><span class="app-desc">กรอกที่อยู่ API คีย์ และจับคู่ฟิลด์เอง</span></button>
+        </div>
+        <p class="hint">${Sync.on ? 'เซิร์ฟเวอร์ X10 เป็นผู้ดึงงานจากแอปเหล่านี้ตามรอบ แม้ปิดมือถือ' : NATIVE ? 'แอปบนมือถือดึงงานจากแอปเหล่านี้โดยตรง และซิงก์ตามรอบขณะเปิดแอป' : 'บนเบราว์เซอร์ บางแอปไม่อนุญาตให้เรียกโดยตรง (CORS) ใช้แอป Android หรือเชื่อมต่อเซิร์ฟเวอร์ X10 จะดึงได้ทุกแอป'}</p>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span class="panel-icon">${icon('link')}</span><div><h2>ให้แอปอื่นส่งงานเข้ามาแทน</h2><p>ถ้าแอปนั้นส่ง Webhook ได้ สร้างลิงก์ API ของ X10 ไปใส่ในแอปนั้น งานจะเข้ามาทันที</p></div></div>
+        <button type="button" class="btn ghost" data-action="go" data-view="connect">${icon('link')} ไปที่ลิงก์ API</button>
+      </section>`;
+  }
+
+  function previewHtml(r) {
+    return `<p class="preview-head">${icon('check')} พบ ${r.total} รายการ แปลงเป็นงานได้ ${r.items.length}${r.total > r.items.length + r.errors.length ? '+' : ''} รายการ</p>
+      <ul class="preview-list">${r.items.slice(0, 6).map((f) => `<li><strong>${esc(f.title)}</strong><span>${f.status === 'doing' ? 'กำลังทำ · ' : f.done ? 'เสร็จแล้ว · ' : ''}${f.due ? esc(dueLabel(f.due)) : 'ไม่มีกำหนด'}${f.time ? ' · ' + esc(f.time) : ''}${f.externalId ? ' · #' + esc(f.externalId) : ''}</span></li>`).join('')}</ul>
+      ${r.errors.length ? `<p class="error-line">อ่านไม่ได้ ${r.errors.length} รายการ: ${esc(r.errors[0].message)}</p>` : ''}`;
+  }
+
+  const FIELD_LABEL = { title: 'ชื่องาน', notes: 'รายละเอียด', due: 'วันที่', time: 'เวลา', done: 'เสร็จ', status: 'สถานะ', priority: 'ความสำคัญ', externalId: 'รหัส' };
+  async function discover(url, headers) {
+    if (Sync.on) return Sync.api('POST', '/connectors/discover', { url, headers });
+    return S.discoverApi(url, headers, { fetch: httpFetch, timeoutMs: 6000 });
+  }
+
+  function openAppSetup(appId, connectorId) {
+    const app = appOf(appId);
+    if (!app) return;
+    const existing = connectorId ? connectorList().find((c) => c.id === connectorId) : null;
+    const values = (existing && existing.appValues) || {};
+    let found = values.endpoint ? { url: values.endpoint, itemsPath: values.itemsPath || '', mapping: safeJson(values.mapping) } : null;
+    const field = (f) => {
+      const id = `af-${f.id}`;
+      if (f.type === 'select') {
+        const cur = values[f.id] || f.value;
+        return `<label class="field"><span class="field-label">${esc(f.label)}</span><select id="${id}">${f.options.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+      }
+      if (f.type === 'secret') {
+        const saved = values[f.id];
+        return `<label class="field"><span class="field-label">${icon('key')} ${esc(f.label)}${f.optional ? ' <span class="muted">(ถ้ามี)</span>' : ''}</span>
+          <span class="secret-row"><input type="password" id="${id}" autocomplete="off" spellcheck="false" placeholder="${esc(saved ? `บันทึกไว้แล้ว ••••${saved.slice(-4)} · เว้นว่างถ้าไม่เปลี่ยน` : f.placeholder || 'วางคีย์ที่นี่')}">
+          <button type="button" class="icon-btn small" data-reveal="${id}" aria-label="แสดงหรือซ่อนคีย์">${icon('eye')}</button></span></label>`;
+      }
+      return `<label class="field"><span class="field-label">${esc(f.label)}</span><input type="${f.type === 'url' ? 'url' : 'text'}" id="${id}" value="${esc(values[f.id] || f.value || '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off" spellcheck="false"></label>`;
+    };
+    const html = `${sheetHead(existing ? `ตั้งค่า ${app.name}` : `เชื่อมต่อ ${app.name}`, app.desc)}
+      <form class="editor" id="app-form" novalidate>
+        <p class="hint">${icon('note')}${esc(app.help)}</p>
+        ${app.fields.map(field).join('')}
+        ${app.discover ? `<div class="discover">
+          <button type="button" class="btn ghost" id="af-discover">${icon('search')} ค้นหา API อัตโนมัติ</button>
+          <div id="af-discovered" aria-live="polite">${found ? `<p class="found-line">${icon('check')} ใช้ที่อยู่ <code>${esc(found.url)}</code></p>` : ''}</div>
+        </div>` : ''}
+        <div class="field-grid">
+          <label class="field"><span class="field-label">ใส่ในหมวดหมู่</span><select id="af-cat"><option value="">ไม่มี</option>${state.categories.map((x) => `<option value="${esc(x.id)}"${x.id === (existing ? existing.category : 'work') ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+          <label class="field"><span class="field-label">ซิงก์อัตโนมัติ</span><select id="af-interval">${[[0, 'ปิด (กดเอง)'], [15, 'ทุก 15 นาที'], [60, 'ทุก 1 ชั่วโมง'], [360, 'ทุก 6 ชั่วโมง'], [1440, 'วันละครั้ง']].map(([n, l]) => `<option value="${n}"${Number(existing ? existing.interval : 15) === n ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        </div>
+        <div class="preview" id="af-preview" aria-live="polite"></div>
+        <footer class="sheet-foot">
+          ${existing ? `<button type="button" class="btn ghost danger-text" data-action="delete-connector" data-id="${esc(existing.id)}">${icon('trash')} เลิกเชื่อมต่อ</button>` : '<span></span>'}
+          <div class="foot-right">
+            <button type="button" class="btn ghost" id="af-test">ทดสอบ</button>
+            <button type="submit" class="btn primary">${existing ? 'บันทึก' : 'เชื่อมต่อ'}</button>
+          </div>
+        </footer>
+      </form>`;
+    openSheet(html, {
+      label: `เชื่อมต่อ ${app.name}`,
+      onMount: (sheet) => {
+        const preview = $('#af-preview', sheet);
+        sheet.addEventListener('click', (e) => {
+          const r = e.target.closest('[data-reveal]');
+          if (!r) return;
+          const input = $(`#${r.dataset.reveal}`, sheet);
+          input.type = input.type === 'password' ? 'text' : 'password';
+        });
+        const read = () => {
+          const v = {};
+          for (const f of app.fields) {
+            const val = $(`#af-${f.id}`, sheet).value.trim();
+            v[f.id] = f.type === 'secret' && !val ? values[f.id] || '' : val;
+          }
+          return v;
+        };
+        const missing = (v) => app.fields.find((f) => !f.optional && f.type !== 'select' && !v[f.id]);
+        const config = () => {
+          const v = read();
+          if (found) Object.assign(v, { endpoint: found.url, itemsPath: found.itemsPath || '', mapping: JSON.stringify(found.mapping || {}) });
+          const built = app.build(Object.assign({}, v, { mapping: safeJson(v.mapping) }));
+          return Object.assign(built, {
+            name: existing ? existing.name : app.name, method: 'GET', body: '',
+            category: $('#af-cat', sheet).value || null, interval: Number($('#af-interval', sheet).value),
+            app: app.id, appValues: v,
+          });
+        };
+        const discoverBtn = $('#af-discover', sheet);
+        if (discoverBtn) {
+          discoverBtn.addEventListener('click', async () => {
+            const v = read();
+            const box = $('#af-discovered', sheet);
+            if (!/^https?:\/\//.test(v.url || '')) {
+              box.innerHTML = '<p class="error-line">ใส่ที่อยู่ระบบที่ขึ้นต้นด้วย https://</p>';
+              return;
+            }
+            box.innerHTML = '<p class="muted">กำลังค้นหา API… (ลองหลายที่อยู่ อาจใช้เวลาสักครู่)</p>';
+            discoverBtn.disabled = true;
+            try {
+              const r = await discover(v.url, app.build(Object.assign({}, v, { mapping: {} })).headers);
+              found = r.best;
+              const others = r.found.slice(1, 4);
+              box.innerHTML = r.best
+                ? `<div class="found">
+                    <p class="found-line">${icon('check')} พบรายการงาน ${r.best.count} รายการที่ <code>${esc(r.best.url)}</code></p>
+                    <p class="muted">จับคู่ฟิลด์ให้แล้ว: ${Object.entries(r.best.mapping).map(([k, path]) => `${FIELD_LABEL[k] || k} ← <code>${esc(path)}</code>`).join(' · ') || 'หาให้อัตโนมัติตอนซิงก์'}</p>
+                    ${others.length ? `<p class="muted">ที่อยู่อื่นที่พบ: ${others.map((o, i) => `<button type="button" class="link-btn accent" data-pick="${i + 1}">${esc(o.url.replace(/^https?:\/\/[^/]+/, ''))}</button>`).join(' · ')}</p>` : ''}
+                  </div>`
+                : `<div class="found none">
+                    <p class="error-line">ยังไม่พบรายการงานที่อ่านได้ (ลอง ${r.tried} ที่อยู่)</p>
+                    ${r.needsKey.length ? `<p class="muted">พบ API ที่ต้องใช้คีย์: ${r.needsKey.slice(0, 3).map((x) => `<code>${esc(x.url.replace(/^https?:\/\/[^/]+/, ''))}</code> (HTTP ${x.status})`).join(', ')} ใส่ API key หรือเปลี่ยนวิธีส่งคีย์ แล้วค้นหาอีกครั้ง</p>` : ''}
+                    ${r.specs.length && r.specs[0].auth ? `<p class="muted">เอกสาร API บอกว่าใช้: ${esc(r.specs[0].auth)}</p>` : ''}
+                    ${!r.needsKey.length && r.errors.length >= r.tried ? `<p class="muted">${Sync.on || NATIVE ? 'ติดต่อระบบนี้ไม่ได้ ตรวจที่อยู่และอินเทอร์เน็ต' : 'เบราว์เซอร์ไม่อนุญาตให้เรียกระบบนี้โดยตรง (CORS) ใช้แอป Android หรือเชื่อมต่อเซิร์ฟเวอร์ X10'}</p>` : ''}
+                    <p class="muted">ถ้ายังไม่พบ ขอเอกสาร API หรือที่อยู่ที่ให้รายการงานจากผู้ดูแลระบบ แล้วใช้ “API อื่น ๆ” กรอกเอง</p>
+                  </div>`;
+              $$('[data-pick]', box).forEach((b) => b.addEventListener('click', () => {
+                found = r.found[Number(b.dataset.pick)];
+                box.querySelector('.found-line').innerHTML = `${icon('check')} ใช้ที่อยู่ <code>${esc(found.url)}</code>`;
+              }));
+            } catch (e) {
+              box.innerHTML = `<p class="error-line">${esc(e.message)}</p>`;
+            } finally {
+              discoverBtn.disabled = false;
+            }
+          });
+        }
+        $('#af-test', sheet).addEventListener('click', async () => {
+          const v = read();
+          const m = missing(v);
+          if (m) {
+            preview.innerHTML = `<p class="error-line">ใส่ ${esc(m.label)} ก่อน</p>`;
+            return;
+          }
+          if (app.discover && !found) {
+            preview.innerHTML = '<p class="error-line">กด “ค้นหา API อัตโนมัติ” ก่อน เพื่อหาที่อยู่รายการงาน</p>';
+            return;
+          }
+          preview.innerHTML = '<p class="muted">กำลังดึงข้อมูล…</p>';
+          try {
+            preview.innerHTML = previewHtml(await previewConnector(config()));
+          } catch (e) {
+            preview.innerHTML = `<p class="error-line">${esc(e.message)}</p>`;
+          }
+        });
+        $('#app-form', sheet).addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const m = missing(read());
+          if (m) {
+            preview.innerHTML = `<p class="error-line">ใส่ ${esc(m.label)} ก่อน</p>`;
+            return;
+          }
+          if (app.discover && !found) {
+            preview.innerHTML = '<p class="error-line">กด “ค้นหา API อัตโนมัติ” ก่อน เพื่อหาที่อยู่รายการงาน</p>';
+            return;
+          }
+          try {
+            const r = await saveConnector(config(), existing);
+            closeSheet();
+            toast(`เชื่อมต่อ ${app.name} แล้ว: งานใหม่ ${r.created} · อัปเดต ${r.updated}`);
+          } catch (err) {
+            preview.innerHTML = `<p class="error-line">บันทึกแล้วแต่ซิงก์ไม่สำเร็จ: ${esc(err.message)}</p>`;
+          }
+        });
+      },
+    });
+  }
+
+  /** Saves a connection (server or this phone) and syncs it once. */
+  async function saveConnector(conf, existing) {
+    if (Sync.on) {
+      const saved = existing
+        ? (await Sync.api('PATCH', `/connectors/${enc(existing.id)}`, conf)).connector
+        : (await Sync.api('POST', '/connectors', conf)).connector;
+      try {
+        return await Sync.api('POST', `/connectors/${enc(saved.id)}/sync`);
+      } finally {
+        loadRemote();
+      }
+    }
+    let conn = existing;
+    if (conn) Object.assign(conn, conf);
+    else {
+      conn = Object.assign({ id: S.uid('n_'), active: true, lastSyncAt: null, lastStatus: null, lastError: null, lastCount: 0 }, conf);
+      state.connectors.push(conn);
+    }
+    save();
+    return syncLocalConnector(conn);
+  }
+  function safeJson(s) {
+    try {
+      return typeof s === 'string' && s ? JSON.parse(s) : s && typeof s === 'object' ? s : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
   // ---------- options ----------
   function viewOptions() {
     const td = today();
@@ -1336,6 +1616,11 @@
     const themes = [['system', 'ตามระบบ'], ['light', 'สว่าง'], ['dark', 'มืด']];
     return `
       <header class="page-head"><p class="eyebrow">ตั้งค่า</p><h1>ภาพรวมและการตั้งค่า</h1></header>
+      <button type="button" class="panel link-panel" data-action="go" data-view="apps">
+        <span class="panel-icon">${icon('key')}</span>
+        <span class="link-panel-text"><strong>เชื่อมต่อแอปด้วย API key</strong><span>${connectorList().length ? `เชื่อมต่อแล้ว ${connectorList().length} แอป: ${esc(connectorList().map((c) => c.name).join(', '))}` : 'TaskFlow, Trello, ClickUp, Asana, GitHub และ API อื่น ๆ'}</span></span>
+        ${icon('right')}
+      </button>
       ${widgetsPanel()}
       <section class="panel">
         <div class="stats">
@@ -1962,7 +2247,7 @@
   }
 
   // ---------- views & navigation ----------
-  const VIEWS = { tasks: viewTasks, calendar: viewCalendar, connect: viewConnect, options: viewOptions };
+  const VIEWS = { tasks: viewTasks, calendar: viewCalendar, connect: viewConnect, options: viewOptions, apps: viewApps };
   const TABS = [['tasks', 'tasks', 'งาน'], ['calendar', 'calendar', 'ปฏิทิน'], null, ['connect', 'plug', 'เชื่อมต่อ'], ['options', 'sliders', 'ตั้งค่า']];
 
   function render() {
@@ -1971,8 +2256,9 @@
     view.innerHTML = VIEWS[ui.view]();
     view.dataset.view = ui.view;
     if (ui.view === 'tasks') renderTaskList();
+    const activeTab = ui.view === 'apps' ? 'options' : ui.view;
     $('#tabbar').innerHTML = TABS.map((tab) => tab
-      ? `<button type="button" class="tab${ui.view === tab[0] ? ' on' : ''}" data-action="go" data-view="${tab[0]}" ${ui.view === tab[0] ? 'aria-current="page"' : ''}>${icon(tab[1])}<span>${tab[2]}</span></button>`
+      ? `<button type="button" class="tab${activeTab === tab[0] ? ' on' : ''}" data-action="go" data-view="${tab[0]}" ${activeTab === tab[0] ? 'aria-current="page"' : ''}>${icon(tab[1])}<span>${tab[2]}</span></button>`
       : `<button type="button" class="fab" data-action="new-task" aria-label="เพิ่มงาน">${icon('plus')}</button>`).join('');
     const search = $('#search-input');
     if (search) {
@@ -1996,7 +2282,7 @@
     }
     render();
     if (changedView) window.scrollTo(0, 0);
-    if (view === 'connect') loadRemote();
+    if (view === 'connect' || view === 'apps') loadRemote();
   }
 
   // ---------- actions ----------
@@ -2150,7 +2436,7 @@
       render();
     },
     export: () => {
-      const data = JSON.stringify({ app: 'X10 Tasks', version: S.VERSION, exportedAt: nowISO(), tasks: state.tasks, categories: state.categories, connectors: state.connectors.map(({ headers, ...c }) => c) }, null, 2);
+      const data = JSON.stringify({ app: 'X10 Tasks', version: S.VERSION, exportedAt: nowISO(), tasks: state.tasks, categories: state.categories, connectors: state.connectors.map(({ headers, appValues, ...c }) => c) }, null, 2);
       const blob = new Blob([data], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       openSheet(`${sheetHead('ส่งออกข้อมูล', `${state.tasks.length} งาน`)}
@@ -2172,7 +2458,15 @@
     },
     'connect-server': () => openConnectServer(),
     'new-connector': () => openConnector(null),
-    'edit-connector': (el) => openConnector(el.dataset.id),
+    'edit-connector': (el) => {
+      const c = connectorList().find((x) => x.id === el.dataset.id);
+      if (c && appOf(c.app)) openAppSetup(c.app, c.id);
+      else openConnector(el.dataset.id);
+    },
+    'setup-app': (el) => {
+      const c = connectorList().find((x) => x.app === el.dataset.app);
+      openAppSetup(el.dataset.app, c ? c.id : null);
+    },
     'sync-connector': async (el) => {
       el.classList.add('spin');
       try {
@@ -2438,6 +2732,7 @@
       if (Sync.on && Sync.status !== 'online') Sync.start();
     },
     permissionChanged: () => ui.view === 'options' && render(),
+    httpResult,
     back: () => {
       if (!$('#dialog-root').hidden) {
         const cancel = $('#dialog-root [data-r="0"]');
@@ -2451,6 +2746,10 @@
       if (ui.filter) {
         ui.filter = '';
         render();
+        return true;
+      }
+      if (ui.view === 'apps') {
+        go('options');
         return true;
       }
       if (ui.view !== 'tasks') {
@@ -2467,7 +2766,7 @@
   Native.server();
   Native.applyWidgetActions();
   Native.push();
-  Sync.start().then(() => ui.view === 'connect' && loadRemote());
+  Sync.start().then(() => (ui.view === 'connect' || ui.view === 'apps') && loadRemote());
   detectServer();
   handleIncoming();
   if (!DEMO && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
