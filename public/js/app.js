@@ -25,6 +25,7 @@
   const F_WEEKDAY = fmt({ weekday: 'long' });
   const F_MONTH_YEAR = fmt({ month: 'long', year: 'numeric' });
   const F_LONG = fmt({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const F_DATE_Y = fmt({ day: 'numeric', month: 'short', year: 'numeric' });
   const RTF = new Intl.RelativeTimeFormat('th', { numeric: 'auto' });
 
   function ago(iso) {
@@ -1087,6 +1088,23 @@
   }
   const intervalLabel = (m) => (m >= 60 ? `${m / 60} ชม.` : `${m} นาที`);
 
+  const KEY_ROLE_LABEL = { admin: 'ผู้ดูแล', app: 'อ่าน-แก้ไขงาน', inbox: 'ส่งงานเข้าอย่างเดียว' };
+  const KEY_EXPIRY = [[0, 'ไม่หมดอายุ'], [30, '30 วัน'], [90, '90 วัน'], [365, '1 ปี']];
+  // What it takes to give another app access, shown wherever keys are created.
+  function keyRules() {
+    return `<ul class="key-rules">
+      <li>${icon('cloud')}<span>ต้องเชื่อมต่อเซิร์ฟเวอร์ X10 ด้วย<b>คีย์ผู้ดูแล</b>ก่อน</span></li>
+      <li>${icon('link')}<span>สร้าง<b>ลิงก์ API แยกให้แต่ละแอป</b> ในลิงก์มีคีย์อยู่แล้ว แอปนั้นแค่ส่งข้อมูลมาที่ลิงก์</span></li>
+      <li>${icon('key')}<span>เลือกสิทธิ์ได้: <b>ส่งงานเข้าอย่างเดียว</b> (อ่านงานไม่ได้ ปลอดภัยสุด) หรือ <b>อ่าน-แก้ไขงาน</b> และตั้งวันหมดอายุได้</span></li>
+      <li>${icon('alert')}<span>ลิงก์แสดง<b>ครั้งเดียว</b>ตอนสร้าง ถ้าหายหรือหลุด กด ${icon('refresh')} สร้างลิงก์ใหม่ ลิงก์เก่าจะใช้ไม่ได้ทันที</span></li>
+    </ul>`;
+  }
+  function hookExample(link) {
+    return `curl -X POST ${link} \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"แขกห้อง 305 ขอหมอนเพิ่ม","due":"today","time":"15:00"}'`;
+  }
+
   function apiExample(base, key) {
     return `curl -X POST ${base}/tasks \\
   -H "Authorization: Bearer ${key}" \\
@@ -1126,27 +1144,38 @@
     let inbound;
     if (srv && admin) {
       inbound = `
+        ${keyRules()}
         <p class="field-label">ที่อยู่ API</p>${copyBox(Sync.base())}
-        <ul class="rows">${r.keys.map((k) => `
+        <ul class="rows">${r.keys.map((k) => {
+          const expired = k.expiresAt && Date.parse(k.expiresAt) <= Date.now();
+          return `
           <li class="row-item">
-            <span class="row-icon">${icon('key')}</span>
-            <div class="row-main"><strong>${esc(k.name)} ${k.role === 'admin' ? '<span class="tag">ผู้ดูแล</span>' : ''}</strong>
+            <span class="row-icon ${expired ? 'bad' : k.role === 'inbox' ? 'ok' : ''}">${icon(k.role === 'inbox' ? 'link' : 'key')}</span>
+            <div class="row-main"><strong>${esc(k.name)} <span class="tag role-${esc(k.role)}">${esc(KEY_ROLE_LABEL[k.role] || k.role)}</span></strong>
               <span class="mono">${esc(k.prefix)}••••••</span>
-              <span class="row-sub">ใช้ล่าสุด ${esc(ago(k.lastUsedAt))}</span></div>
-            <div class="row-actions"><button type="button" class="icon-btn small" data-action="delete-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}" aria-label="ลบคีย์ ${esc(k.name)}">${icon('trash')}</button></div>
-          </li>`).join('')}</ul>
-        <button type="button" class="btn ghost block" data-action="new-key">${icon('plus')} สร้างคีย์ให้แอปใหม่</button>
-        <details class="howto"><summary>ตัวอย่างการส่งงานเข้ามา</summary>${copyBox(apiExample(Sync.base(), 'x10_คีย์ของแอป'), { pre: true })}
+              <span class="row-sub">${expired ? '<em class="bad">หมดอายุแล้ว</em>' : k.expiresAt ? `ใช้ได้ถึง ${esc(F_DATE_Y.format(new Date(k.expiresAt)))}` : 'ไม่มีวันหมดอายุ'} · ใช้ล่าสุด ${esc(ago(k.lastUsedAt))}</span></div>
+            <div class="row-actions">
+              ${k.role === 'admin' ? '' : `<button type="button" class="icon-btn small" data-action="rotate-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}" aria-label="สร้างลิงก์ใหม่ให้ ${esc(k.name)}">${icon('refresh')}</button>`}
+              <button type="button" class="icon-btn small" data-action="delete-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}" aria-label="ลบคีย์ ${esc(k.name)}">${icon('trash')}</button>
+            </div>
+          </li>`;
+        }).join('')}</ul>
+        <button type="button" class="btn primary block" data-action="new-key">${icon('link')} สร้างลิงก์ API ให้แอปใหม่</button>
+        <details class="howto"><summary>ตัวอย่างการส่งงานเข้ามา</summary>
+          <p class="muted">แบบลิงก์ (ไม่ต้องใส่ header)</p>${copyBox(hookExample(Sync.base() + '/hooks/x10_คีย์ของแอป'), { pre: true })}
+          <p class="muted">แบบใส่คีย์ใน header</p>${copyBox(apiExample(Sync.base(), 'x10_คีย์ของแอป'), { pre: true })}
           <p class="muted">รับชื่อฟิลด์ได้หลายแบบ เช่น <code>title</code>/<code>text</code>/<code>name</code>, <code>due</code>/<code>dueDate</code>/<code>date</code> และวันที่แบบ <code>2026-11-05</code>, <code>05/11/2569</code>, <code>today</code></p></details>`;
     } else if (srv) {
-      inbound = '<p class="muted">ต้องใช้คีย์ผู้ดูแลเพื่อสร้างคีย์ให้แอปอื่น</p>';
+      inbound = `${keyRules()}<p class="muted">เครื่องนี้เชื่อมต่อด้วยคีย์แอป จึงสร้างลิงก์ไม่ได้ ให้เชื่อมต่อด้วยคีย์ผู้ดูแล</p>`;
     } else {
-      inbound = `<ol class="steps">
+      inbound = `${keyRules()}
+        <ol class="steps">
           <li>เปิดเซิร์ฟเวอร์ X10 บนคอมพิวเตอร์หรือคลาวด์ (<code>npm start</code>)</li>
           <li>กด “เชื่อมต่อเซิร์ฟเวอร์” แล้วใส่คีย์ผู้ดูแล</li>
-          <li>สร้างคีย์ให้แต่ละแอป เช่น LINE Bot, Google Sheets, ระบบ PMS แล้วให้แอปนั้นส่ง <code>POST /api/v1/tasks</code></li>
+          <li>กด “สร้างลิงก์ API ให้แอปใหม่” แล้วนำลิงก์ไปวางในแอปนั้น เช่น LINE, Google Sheets, ระบบ PMS</li>
         </ol>
-        ${copyBox(apiExample(origin + '/api/v1', 'x10_คีย์ของแอป'), { pre: true })}`;
+        <p class="field-label">หน้าตาลิงก์ที่จะได้</p>
+        ${copyBox(origin + '/api/v1/hooks/x10_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')}`;
     }
 
     let outbound;
@@ -1178,7 +1207,7 @@
         ${!srv || admin ? `<button type="button" class="btn ghost block" data-action="new-connector">${icon('plus')} เพิ่มแหล่งข้อมูล</button>` : ''}
       </section>
       <section class="panel">
-        <div class="panel-head"><span class="panel-icon">${icon('key')}</span><div><h2>ให้แอปอื่นส่งงานเข้ามา</h2><p>REST API พร้อมคีย์แยกของแต่ละแอป ยกเลิกได้ทุกเมื่อ</p></div></div>
+        <div class="panel-head"><span class="panel-icon">${icon('key')}</span><div><h2>ลิงก์ API ให้แอปอื่นส่งงานเข้ามา</h2><p>แต่ละแอปได้ลิงก์และคีย์ของตัวเอง กำหนดสิทธิ์และวันหมดอายุได้ ยกเลิกได้ทุกเมื่อ</p></div></div>
         ${inbound}
       </section>
       <section class="panel">
@@ -1892,6 +1921,35 @@
     });
   }
 
+  /** The links for one app's key. Shown once: only a fingerprint of the key is kept on the server. */
+  function openKeyLinks(key, secret, { rotated = false } = {}) {
+    const hook = `${Sync.base()}/hooks/${secret}`;
+    const canShare = typeof navigator.share === 'function' && !DEMO;
+    openSheet(`${sheetHead(`ลิงก์ API ของ ${key.name}`, rotated ? 'ลิงก์เดิมใช้ไม่ได้แล้ว ส่งลิงก์ใหม่นี้ให้แอปนั้นแทน' : `${KEY_ROLE_LABEL[key.role] || key.role} · ${key.expiresAt ? `ใช้ได้ถึง ${F_DATE_Y.format(new Date(key.expiresAt))}` : 'ไม่มีวันหมดอายุ'}`)}
+      <div class="editor key-links">
+        <section class="link-card">
+          <span class="field-label">${icon('link')} ลิงก์รับงาน (Webhook)</span>
+          ${copyBox(hook)}
+          <p class="hint">วางลิงก์นี้ในแอปที่ส่ง Webhook ได้ เช่น LINE, Zapier, Make, n8n, Google Apps Script แล้วส่งข้อมูลงานมาแบบ POST ไม่ต้องใส่ header หรือคีย์เพิ่ม</p>
+          ${canShare ? `<button type="button" class="btn ghost" data-action="share-link" data-text="${esc(hook)}" data-title="ลิงก์ API ของ ${esc(key.name)}">${icon('send')} แชร์ลิงก์</button>` : ''}
+        </section>
+        <section class="link-card">
+          <span class="field-label">${icon('key')} API key (สำหรับแอปที่ใส่ header ได้)</span>
+          ${copyBox(secret)}
+          <p class="hint">ใส่คีย์ใน header <code>Authorization: Bearer คีย์</code> แล้วส่งงานแบบ POST ไปที่</p>
+          ${copyBox(`${Sync.base()}/tasks`)}
+        </section>
+        ${key.role === 'app' ? `<section class="link-card">
+          <span class="field-label">${icon('tasks')} ลิงก์ดูรายการงาน (JSON)</span>
+          ${copyBox(`${Sync.base()}/tasks?key=${secret}`)}
+          <p class="hint">เปิดในเบราว์เซอร์หรือให้แอปอื่นอ่านงานทั้งหมดได้ คีย์นี้มีสิทธิ์อ่าน-แก้ไขงาน</p>
+        </section>` : ''}
+        <details class="howto"><summary>ตัวอย่างการส่งงานเข้ามาที่ลิงก์</summary>${copyBox(hookExample(hook), { pre: true })}</details>
+        <p class="hint warn">${icon('alert')} ใครมีลิงก์นี้ก็ส่งงานเข้ามาได้ เก็บเป็นความลับ ลิงก์นี้แสดงครั้งเดียว ถ้าหายหรือหลุด ให้กดสร้างลิงก์ใหม่ที่หน้า เชื่อมต่อ</p>
+        <footer class="sheet-foot"><span></span><button type="button" class="btn primary" data-action="close-sheet">เก็บลิงก์แล้ว</button></footer>
+      </div>`, { label: `ลิงก์ API ของ ${key.name}` });
+  }
+
   function openSecret({ title, intro, secret, extra = '' }) {
     openSheet(`${sheetHead(title)}
       <div class="editor">
@@ -2149,24 +2207,50 @@
       }
     },
     'new-key': () => {
-      openSheet(`${sheetHead('สร้างคีย์ให้แอปใหม่', 'แต่ละแอปควรมีคีย์ของตัวเอง เพื่อยกเลิกแยกกันได้')}
+      openSheet(`${sheetHead('สร้างลิงก์ API ให้แอปใหม่', 'แต่ละแอปควรมีลิงก์ของตัวเอง เพื่อยกเลิกแยกกันได้')}
         <form class="editor" id="key-form" novalidate>
-          <label class="field"><span class="field-label">ชื่อแอป</span><input type="text" id="key-name" maxlength="60" placeholder="เช่น LINE Bot, Google Sheets, ระบบ PMS" autofocus></label>
-          <footer class="sheet-foot"><span></span><button type="submit" class="btn primary">สร้างคีย์</button></footer>
+          <label class="field"><span class="field-label">ชื่อแอป</span><input type="text" id="key-name" maxlength="60" placeholder="เช่น LINE OA, Google Sheets, ระบบ PMS" autofocus></label>
+          <fieldset class="field"><legend class="field-label">สิทธิ์ของแอปนี้</legend>
+            <div class="role-pick">
+              <label class="role-opt"><input type="radio" name="key-role" value="inbox" checked><span><b>${icon('inbox')} ส่งงานเข้าอย่างเดียว</b><small>เพิ่มงานใหม่ได้ แต่อ่านหรือแก้งานไม่ได้ เหมาะกับลิงก์ที่ใส่ในแอปอื่น</small></span></label>
+              <label class="role-opt"><input type="radio" name="key-role" value="app"><span><b>${icon('edit')} อ่าน-แก้ไขงาน</b><small>อ่าน เพิ่ม แก้ ปิดขั้นตอน และลบงานได้ เหมาะกับระบบที่ต้องซิงก์สองทาง</small></span></label>
+            </div>
+          </fieldset>
+          <label class="field"><span class="field-label">${icon('clock')} อายุของลิงก์</span>
+            <select id="key-expiry">${KEY_EXPIRY.map(([d, l]) => `<option value="${d}">${l}</option>`).join('')}</select></label>
+          <footer class="sheet-foot"><span></span><button type="submit" class="btn primary">${icon('link')} สร้างลิงก์</button></footer>
         </form>`, {
-        label: 'สร้างคีย์',
+        label: 'สร้างลิงก์ API',
         onMount: (sheet) => $('#key-form', sheet).addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = $('#key-name', sheet).value.trim() || 'แอปใหม่';
+          const role = ($('input[name="key-role"]:checked', sheet) || { value: 'inbox' }).value;
           try {
-            const r = await Sync.api('POST', '/keys', { name });
+            const r = await Sync.api('POST', '/keys', { name, role, expiresInDays: Number($('#key-expiry', sheet).value) });
             loadRemote();
-            openSecret({ title: `คีย์สำหรับ ${r.key.name}`, intro: 'ให้แอปนั้นส่งคีย์นี้ใน header “Authorization: Bearer …” ทุกครั้ง', secret: r.secret, extra: copyBox(apiExample(Sync.base(), r.secret), { pre: true }) });
+            openKeyLinks(r.key, r.secret);
           } catch (x) {
             toast(x.message);
           }
         }),
       });
+    },
+    'rotate-key': async (el) => {
+      if (!(await confirmDialog({ title: `สร้างลิงก์ใหม่ให้ “${el.dataset.name}”?`, message: 'ลิงก์และคีย์เดิมจะใช้ไม่ได้ทันที ต้องนำลิงก์ใหม่ไปใส่ในแอปนั้นแทน', confirm: 'สร้างลิงก์ใหม่' }))) return;
+      try {
+        const r = await Sync.api('POST', `/keys/${enc(el.dataset.id)}/rotate`);
+        loadRemote();
+        openKeyLinks(r.key, r.secret, { rotated: true });
+      } catch (e) {
+        toast(e.message);
+      }
+    },
+    'share-link': async (el) => {
+      try {
+        await navigator.share({ title: el.dataset.title, text: el.dataset.text });
+      } catch (e) {
+        /* cancelled */
+      }
     },
     'delete-key': async (el) => {
       if (!(await confirmDialog({ title: `ยกเลิกคีย์ “${el.dataset.name}”?`, message: 'แอปที่ใช้คีย์นี้จะส่งงานเข้ามาไม่ได้อีก', confirm: 'ยกเลิกคีย์', danger: true }))) return;

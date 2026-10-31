@@ -708,8 +708,9 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 }
 .editor .title-input:focus { box-shadow: none; border-color: var(--accent); }
 .field-error { color: var(--danger); font-size: 13px; margin-top: -10px; }
-.hint { font-size: 13px; color: var(--ink-2); line-height: 1.5; display: flex; gap: 6px; align-items: flex-start; }
-.hint .i { width: 16px; height: 16px; margin-top: 2px; }
+.hint { font-size: 13px; color: var(--ink-2); line-height: 1.55; overflow-wrap: anywhere; }
+.hint .i { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
+.hint code { overflow-wrap: anywhere; }
 .status-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .sp { position: relative; }
 .sp input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
@@ -926,3 +927,31 @@ code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; 
 .swatch.custom input:checked + span { background: var(--cat); }
 .swatch.custom span .i { width: 18px; height: 18px; }
 .swatch.custom input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+
+/* ---------- API links for other apps ---------- */
+.key-rules { list-style: none; margin: 0; padding: 12px; border-radius: 16px; background: var(--surface-2); display: flex; flex-direction: column; gap: 8px; }
+.key-rules li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.key-rules li > .i { width: 18px; height: 18px; margin-top: 1px; color: var(--accent); }
+.key-rules b { color: var(--ink); font-weight: 600; }
+.key-rules span .i { width: 14px; height: 14px; vertical-align: -2px; }
+.tag.role-inbox { background: var(--ok-soft); color: var(--ok); }
+.tag.role-app { background: var(--doing-soft); color: var(--doing); }
+.role-pick { display: flex; flex-direction: column; gap: 8px; }
+.role-opt { position: relative; }
+.role-opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.role-opt span {
+  display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px;
+  border: 1.5px solid var(--line); background: var(--surface);
+}
+.role-opt b { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14.5px; color: var(--ink); }
+.role-opt b .i { width: 17px; height: 17px; color: var(--accent); }
+.role-opt small { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+.role-opt input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+.role-opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.key-links { gap: 12px; }
+.link-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 16px; border: 1px solid var(--line); }
+.link-card .copy-box { background: var(--accent-soft); }
+.link-card .copy-box code { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.link-card .btn { align-self: flex-start; }
+.hint.warn { color: var(--warn); font-weight: 600; }
+.hint.warn .i { color: var(--warn); }

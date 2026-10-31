@@ -120,6 +120,44 @@ test('API: complete steps one by one; the last step finishes the task', async (t
   assert.equal((await call('POST', `/api/v1/tasks/${c.body.task.id}/steps/nope/complete`)).status, 404);
 });
 
+test('API: key links, send-only keys, expiry and new links', async (t) => {
+  const { app, call, base } = await start();
+  t.after(() => app.close());
+
+  // a send-only key: can add tasks, cannot read them
+  const k = await call('POST', '/api/v1/keys', { name: 'LINE OA', role: 'inbox', expiresInDays: 30 });
+  assert.equal(k.body.key.role, 'inbox');
+  assert.ok(Date.parse(k.body.key.expiresAt) > Date.now() + 29 * 86400000);
+  const secret = k.body.secret;
+  assert.equal((await call('POST', '/api/v1/tasks', { title: 'จากหัวเรื่อง' }, secret)).status, 201);
+  assert.equal((await call('GET', '/api/v1/tasks', undefined, secret)).status, 403);
+  assert.equal((await fetch(`${base}/api/v1/stream?access_token=${secret}`)).status, 403);
+
+  // the link carries the key: no header needed, any body format
+  const hook = `/api/v1/hooks/${secret}`;
+  const viaLink = await call('POST', hook, { text: 'แขกห้อง 305 ขอหมอนเพิ่ม', due: 'today' }, null);
+  assert.equal(viaLink.status, 201);
+  assert.equal(viaLink.body.task.sourceName, 'LINE OA');
+  const form = await fetch(base + hook, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'title=' + encodeURIComponent('เติมน้ำดื่ม ห้อง 210') });
+  assert.equal(form.status, 201);
+  assert.equal((await call('POST', '/api/v1/hooks/x10_wrong', { title: 'x' }, null)).status, 401);
+
+  // a new link replaces the old one at once
+  const r = await call('POST', `/api/v1/keys/${k.body.key.id}/rotate`);
+  assert.notEqual(r.body.secret, secret);
+  assert.equal(r.body.key.role, 'inbox');
+  assert.equal((await call('POST', hook, { title: 'เก่า' }, null)).status, 401);
+  assert.equal((await call('POST', `/api/v1/hooks/${r.body.secret}`, { title: 'ใหม่' }, null)).status, 201);
+  const admins = (await call('GET', '/api/v1/keys')).body.keys.filter((x) => x.role === 'admin');
+  assert.equal((await call('POST', `/api/v1/keys/${admins[0].id}/rotate`)).status, 409);
+
+  // expired keys stop working
+  const e = await call('POST', '/api/v1/keys', { name: 'ชั่วคราว', role: 'app', expiresInDays: 1 });
+  app.store.db.keys.find((x) => x.id === e.body.key.id).expiresAt = new Date(Date.now() - 1000).toISOString();
+  assert.equal((await call('GET', '/api/v1/tasks', undefined, e.body.secret)).status, 401);
+  assert.equal((await call('POST', `/api/v1/hooks/${e.body.secret}`, { title: 'x' }, null)).status, 401);
+});
+
 test('API: bulk import and data persists across restarts', async (t) => {
   const { app, call, dataDir } = await start();
   const r = await call('POST', '/api/v1/tasks', [{ title: 'หนึ่ง' }, { title: '' }, { name: 'สาม', category: 'ฝ่ายช่าง' }]);

@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const S = require('../public/js/shared.js');
 
+const KEY_ROLES = ['inbox', 'app', 'admin'];
+const ROLE_RANK = { inbox: 1, app: 2, admin: 3 };
+
 function hashKey(secret) {
   return crypto.createHash('sha256').update(String(secret)).digest('hex');
 }
@@ -210,18 +213,36 @@ class Store extends EventEmitter {
   }
 
   // ---------- API keys ----------
-  createKey({ name, role }) {
+  /**
+   * Roles: "inbox" can only send tasks in (safe to put in a link), "app" can read and change tasks,
+   * "admin" can do everything. expiresInDays: 0 or empty = never.
+   */
+  createKey({ name, role, expiresInDays }) {
     const secret = newSecret('x10_');
+    const days = Math.max(0, Math.min(3650, Math.floor(Number(expiresInDays) || 0)));
     const key = {
       id: S.uid('k_'),
       name: String(name || 'แอปใหม่').trim().slice(0, 60) || 'แอปใหม่',
-      role: role === 'admin' ? 'admin' : 'app',
+      role: KEY_ROLES.includes(role) ? role : 'app',
       hash: hashKey(secret),
       prefix: secret.slice(0, 8),
       createdAt: new Date().toISOString(),
+      expiresAt: days ? new Date(Date.now() + days * 86400000).toISOString() : null,
       lastUsedAt: null,
     };
     this.db.keys.push(key);
+    this.flush();
+    return { key, secret };
+  }
+  /** Replaces a key's secret (its old link stops working at once); name, role and expiry stay. */
+  rotateKey(id) {
+    const key = this.db.keys.find((k) => k.id === id);
+    if (!key) return 'not_found';
+    if (key.role === 'admin') return 'admin';
+    const secret = newSecret('x10_');
+    key.hash = hashKey(secret);
+    key.prefix = secret.slice(0, 8);
+    key.rotatedAt = new Date().toISOString();
     this.flush();
     return { key, secret };
   }
@@ -231,7 +252,7 @@ class Store extends EventEmitter {
     const hb = Buffer.from(h, 'hex');
     return this.db.keys.find((k) => {
       const kb = Buffer.from(k.hash, 'hex');
-      return kb.length === hb.length && crypto.timingSafeEqual(kb, hb);
+      return kb.length === hb.length && crypto.timingSafeEqual(kb, hb) && !(k.expiresAt && Date.parse(k.expiresAt) <= Date.now());
     }) || null;
   }
   touchKey(key) {
@@ -366,4 +387,4 @@ function cleanConnector(body, isNew) {
   return out;
 }
 
-module.exports = { Store, hashKey, newSecret, checkUrl };
+module.exports = { Store, hashKey, newSecret, checkUrl, ROLE_RANK };

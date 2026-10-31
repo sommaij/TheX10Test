@@ -3,7 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { Store, hashKey, checkUrl } = require('./store');
+const { Store, hashKey, checkUrl, ROLE_RANK } = require('./store');
 const { WebhookDispatcher } = require('./webhooks');
 const { ConnectorRunner } = require('./connectors');
 const S = require('../public/js/shared.js');
@@ -122,7 +122,7 @@ function createApp(options = {}) {
     const tasks = store.listTasks({ status: q.status, category: q.category, source: q.source, from: q.from, to: q.to, q: q.q, updatedSince: q.updatedSince });
     return { tasks, count: tasks.length };
   });
-  route('POST', '/api/v1/tasks', 'app', ({ body, key, res }) => {
+  function receiveTasks({ body, key, res }) {
     const source = key.role === 'admin' ? { source: 'app', sourceName: null } : { source: `key:${key.id}`, sourceName: key.name };
     if (Array.isArray(body)) {
       if (body.length > 500) throw new HttpError(400, 'too_many', 'Send at most 500 tasks at once');
@@ -140,6 +140,14 @@ function createApp(options = {}) {
     const r = store.upsertTask(body, source);
     res.statusCode = r.created ? 201 : 200;
     return { task: r.task, created: r.created };
+  }
+  route('POST', '/api/v1/tasks', 'inbox', receiveTasks);
+  // The key is part of the link, for apps that can only be given a URL (LINE, Zapier, Make, Google Sheets…).
+  route('POST', '/api/v1/hooks/:secret', null, (ctx) => {
+    const key = store.findKey(ctx.params.secret);
+    if (!key) throw new HttpError(401, 'unauthorized', 'This link is invalid, expired or was replaced');
+    store.touchKey(key);
+    return receiveTasks(Object.assign({}, ctx, { key }));
   });
   route('GET', '/api/v1/tasks/:id', 'app', ({ params }) => {
     const task = store.getTask(params.id);
@@ -191,9 +199,15 @@ function createApp(options = {}) {
   // ---------- API keys for other apps ----------
   route('GET', '/api/v1/keys', 'admin', () => ({ keys: store.db.keys.map(publicKey) }));
   route('POST', '/api/v1/keys', 'admin', ({ body, res }) => {
-    const { key, secret } = store.createKey({ name: body.name, role: body.role });
+    const { key, secret } = store.createKey({ name: body.name, role: body.role, expiresInDays: body.expiresInDays });
     res.statusCode = 201;
     return { key: publicKey(key), secret };
+  });
+  route('POST', '/api/v1/keys/:id/rotate', 'admin', ({ params }) => {
+    const r = store.rotateKey(params.id);
+    if (r === 'not_found') throw new HttpError(404, 'not_found', 'Key not found');
+    if (r === 'admin') throw new HttpError(409, 'admin_key', 'Admin keys are replaced with: node server/index.js --new-admin-key');
+    return { key: publicKey(r.key), secret: r.secret };
   });
   route('DELETE', '/api/v1/keys/:id', 'admin', ({ params }) => {
     const r = store.deleteKey(params.id);
@@ -276,8 +290,10 @@ function createApp(options = {}) {
     let key = null;
     if (r.role) {
       key = store.findKey(getSecret(req, url));
-      if (!key) throw new HttpError(401, 'unauthorized', 'Missing or invalid API key. Send "Authorization: Bearer <key>".');
-      if (r.role === 'admin' && key.role !== 'admin') throw new HttpError(403, 'forbidden', 'This endpoint needs an admin key');
+      if (!key) throw new HttpError(401, 'unauthorized', 'Missing, invalid or expired API key. Send "Authorization: Bearer <key>".');
+      if ((ROLE_RANK[key.role] || 0) < ROLE_RANK[r.role]) {
+        throw new HttpError(403, 'forbidden', r.role === 'admin' ? 'This endpoint needs an admin key' : 'This key can only send tasks in');
+      }
       store.touchKey(key);
     }
     const params = {};
@@ -291,6 +307,7 @@ function createApp(options = {}) {
   function handleStream(req, res, url) {
     const key = store.findKey(getSecret(req, url));
     if (!key) return send(res, 401, { error: { code: 'unauthorized', message: 'Missing or invalid API key' } });
+    if (key.role === 'inbox') return send(res, 403, { error: { code: 'forbidden', message: 'This key can only send tasks in' } });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write(`retry: 3000\nevent: hello\ndata: ${JSON.stringify({ today: S.todayIn(timeZone) })}\n\n`);
     streams.add(res);
