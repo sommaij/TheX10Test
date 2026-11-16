@@ -1,0 +1,1408 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ดวงแก้วเรียกฝน</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#15110e">
+<meta name="description" content="เกมลงดันเล่าเรื่อง เล่นเป็นทีม 3–6 คน ด้วยมือถือเครื่องเดียว">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Noto+Serif+Thai:wght@400;600&family=Srisakdi:wght@700&display=swap">
+<style>
+/* Layout: one-column phone table — party strip on top, a stage that is either a story page or the battle arena, and the shared action panel below. Deliberately one look: torchlight in a cave. */
+:root{
+  --rock:#15110e;
+  --rock-2:#1f1814;
+  --rock-3:#2b221b;
+  --line:#4a3a2c;
+  --text:#f1e6d6;
+  --text-dim:#b8a48e;
+  --torch:#f2a33a;
+  --torch-ink:#2a1606;
+  --ember:#e0623a;
+  --jade:#4cc6a2;
+  --crystal:#8fd3ff;
+  --gold:#e9c46a;
+  --scrim:rgba(8,6,5,.8);
+  --font-title:"Srisakdi","Noto Serif Thai",serif;
+  --font-story:"Noto Serif Thai","Sarabun",Georgia,serif;
+  --font-ui:"IBM Plex Sans Thai","Sarabun","Noto Sans Thai",system-ui,sans-serif;
+  color-scheme:dark;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{min-height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(90% 45% at 50% -5%, rgba(242,163,58,.18) 0%, transparent 70%) no-repeat,
+    radial-gradient(70% 40% at 50% 105%, rgba(76,198,162,.08) 0%, transparent 70%) no-repeat,
+    var(--rock);
+  color:var(--text);
+  font-family:var(--font-ui);
+  font-size:15px;
+  line-height:1.55;
+  -webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
+}
+button,select,input{font:inherit;color:inherit}
+button{touch-action:manipulation}
+.app{
+  max-width:560px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:12px 44px;
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- Setup ---------- */
+.hero-art{display:grid;justify-items:center;text-align:center;gap:6px;padding-block:4px 16px}
+.hero-art svg{width:min(240px,64%);height:auto}
+.hero-art h1{font-family:var(--font-title);font-weight:700;font-size:clamp(40px,12vw,58px);line-height:1.15;margin:0;color:var(--torch);text-wrap:balance;text-shadow:0 0 24px rgba(242,163,58,.35)}
+.hero-art p{margin:0;color:var(--text-dim);max-width:34ch;text-wrap:balance}
+.stack{display:grid;gap:14px}
+.card{background:var(--rock-2);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px}
+.card h2{font-family:var(--font-story);font-weight:600;font-size:17px;margin:0;line-height:1.3}
+.hint{margin:-4px 0 0;font-size:13px;color:var(--text-dim)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--rock);padding:4px;border-radius:12px}
+.seg button{border:0;background:transparent;border-radius:9px;min-height:44px;font-size:18px;font-weight:600;color:var(--text-dim);cursor:pointer}
+.seg button[aria-checked="true"]{background:var(--torch);color:var(--torch-ink)}
+.seg button:focus-visible{outline:3px solid var(--text);outline-offset:1px}
+.seats{display:grid;gap:8px}
+.seat{display:grid;grid-template-columns:34px minmax(0,1fr) minmax(0,9.5em);gap:8px;align-items:center}
+.seat .s-em{font-size:24px;text-align:center;line-height:1}
+.seat input,.seat select{width:100%;min-width:0;font-size:16px;padding:10px 10px;border-radius:10px;border:1px solid var(--line);background:var(--rock);color:var(--text)}
+.seat input::placeholder{color:var(--text-dim);opacity:.7}
+.seat input:focus,.seat select:focus{outline:2px solid var(--torch);outline-offset:1px}
+.found{font-size:13px;color:var(--text-dim);text-align:center}
+.found b{color:var(--gold)}
+.resume{grid-template-columns:minmax(0,1fr) auto;align-items:center;border-color:var(--torch)}
+.resume b{font-family:var(--font-story);font-weight:600;display:block}
+.resume span{font-size:13px;color:var(--text-dim)}
+
+/* ---------- Buttons ---------- */
+.btn{
+  appearance:none;border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-height:50px;
+  background:var(--rock-3);color:var(--text);font-size:16px;font-weight:600;line-height:1.3;cursor:pointer;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;text-align:left;
+}
+.btn small{font-weight:400;font-size:12.5px;color:var(--text-dim);line-height:1.4}
+.btn.primary{background:var(--torch);border-color:var(--torch);color:var(--torch-ink);align-items:center;text-align:center}
+.btn.primary small{color:var(--torch-ink);opacity:.8}
+.btn.big{min-height:56px;font-size:19px}
+.btn.ghost{background:transparent;color:var(--text-dim);min-height:44px;font-weight:500;align-items:center}
+.btn.special{border-color:var(--crystal)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:focus-visible{outline:3px solid var(--text);outline-offset:2px}
+.btn .tag{display:inline-block;font-size:11.5px;font-weight:500;padding:0 7px;border-radius:999px;background:var(--rock);color:var(--crystal);margin-left:6px;vertical-align:1px}
+
+/* ---------- Game chrome ---------- */
+.topbar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.where{margin-right:auto;font-family:var(--font-story);font-weight:600;font-size:15px;color:var(--torch);line-height:1.25;min-width:0}
+.tbtn{border:1px solid var(--line);background:transparent;border-radius:10px;padding:5px 11px;min-height:38px;cursor:pointer;font-size:13.5px;color:var(--text-dim);flex:none}
+.tbtn:focus-visible{outline:3px solid var(--text);outline-offset:2px}
+.party{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.hero{
+  appearance:none;border:1px solid var(--line);background:var(--rock-2);border-radius:12px;padding:7px 8px;
+  display:grid;gap:3px;text-align:left;min-width:0;position:relative;
+}
+button.hero{cursor:pointer}
+.hero.active{border-color:var(--torch);box-shadow:0 0 0 1px var(--torch),0 0 16px rgba(242,163,58,.25)}
+.hero.target,.foe.target{border-color:var(--jade);box-shadow:0 0 0 2px var(--jade);animation:beckon .8s ease-in-out infinite alternate}
+.hero.down{opacity:.55;filter:grayscale(.8)}
+.h-top{display:flex;align-items:center;gap:5px;min-width:0}
+.h-em{font-size:18px;line-height:1;flex:none}
+.h-name{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.h-cls{font-size:11.5px;color:var(--text-dim);display:flex;justify-content:space-between;gap:4px;line-height:1.3}
+.pips{color:var(--crystal);letter-spacing:1px}
+.hpbar{height:5px;border-radius:3px;background:var(--rock);overflow:hidden}
+.hpbar i{display:block;height:100%;background:var(--jade);transition:width .3s}
+.hpbar.low i{background:var(--ember)}
+.h-hp{font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--text-dim);line-height:1.2}
+.res{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;font-size:13px;color:var(--text-dim);padding:8px 2px 12px}
+.res .hrt{color:var(--ember);font-size:15px}
+.res .bag{display:flex;gap:10px}
+.res .zero{opacity:.4}
+.hurt{animation:hurt .45s ease-out}
+@keyframes hurt{0%{transform:translateX(0);background:rgba(224,98,58,.45)}25%{transform:translateX(-3px)}50%{transform:translateX(3px)}100%{transform:translateX(0)}}
+@keyframes beckon{from{transform:scale(1)}to{transform:scale(1.03)}}
+
+/* ---------- Story ---------- */
+.story{background:var(--rock-2);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px;position:relative;overflow:hidden}
+.story::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,transparent,var(--torch),transparent);opacity:.7}
+.eyebrow{font-size:12px;letter-spacing:.06em;color:var(--text-dim)}
+.s-title{font-family:var(--font-title);font-weight:700;font-size:30px;line-height:1.25;margin:2px 0 8px;color:var(--gold);text-wrap:balance}
+.story p{font-family:var(--font-story);font-size:16.5px;line-height:1.85;margin:0 0 10px;max-width:62ch}
+.story p:last-child{margin-bottom:0}
+.story q{display:block;font-weight:600;color:var(--crystal);text-align:center;quotes:"“" "”";padding-block:4px}
+.picked{font-family:var(--font-ui)!important;font-size:14px!important;color:var(--torch);margin-bottom:6px!important}
+.rollres{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-ui);font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;margin-bottom:10px}
+.rollres.ok{background:rgba(76,198,162,.16);color:var(--jade)}
+.rollres.no{background:rgba(224,98,58,.16);color:var(--ember)}
+.fx{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.fx span{font-size:12.5px;font-weight:500;padding:2px 9px;border-radius:999px;background:var(--rock);border:1px solid var(--line)}
+.fx .bad{color:var(--ember);border-color:rgba(224,98,58,.5)}
+.fx .good{color:var(--jade);border-color:rgba(76,198,162,.5)}
+.roster{display:grid;gap:8px;margin-top:12px}
+.roster div{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px;align-items:start;font-size:14px;line-height:1.5}
+.roster .r-em{font-size:22px;line-height:1.2}
+.roster b{color:var(--text)}
+.roster span{color:var(--text-dim)}
+.end-mark{font-family:var(--font-ui);font-size:12px;letter-spacing:.06em;color:var(--jade)}
+.epi{border-top:1px dashed var(--line);margin-top:14px;padding-top:12px}
+.epi p{font-size:15px;color:var(--text-dim)}
+
+/* ---------- Arena ---------- */
+.arena{background:var(--rock-2);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
+.arena-head{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--text-dim)}
+.arena-head b{font-family:var(--font-story);color:var(--ember);font-size:15px}
+.foes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.foe{
+  appearance:none;border:1px solid var(--line);background:var(--rock-3);border-radius:12px;padding:8px 6px;
+  display:grid;justify-items:center;gap:3px;text-align:center;min-width:0;color:var(--text);
+}
+button.foe{cursor:pointer}
+.foe.boss{grid-column:1 / -1;padding-block:12px}
+.foe.dead{opacity:.28}
+.f-em{font-size:30px;line-height:1.1}
+.foe.boss .f-em{font-size:52px}
+.f-name{font-size:12.5px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.foe .hpbar{width:100%}
+.foe .hpbar i{background:var(--ember)}
+.foe.boss .hpbar{max-width:260px}
+.f-hp{font-size:11.5px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.badges{display:flex;flex-wrap:wrap;justify-content:center;gap:3px}
+.badges em{font-style:normal;font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--rock);color:var(--crystal)}
+.badges em.stun{color:var(--gold)}
+.clog{list-style:none;margin:0;padding:8px 0 0;border-top:1px dashed var(--line);display:grid;gap:3px;font-size:13px;color:var(--text-dim);min-height:5.6em}
+.clog li:last-child{color:var(--text)}
+.clog .round{color:var(--torch);font-weight:600}
+.clog .good{color:var(--jade)}
+.clog .bad{color:var(--ember)}
+
+/* ---------- Action panel ---------- */
+.actions{margin-top:12px}
+.ask{display:grid;gap:10px}
+.ask-title{font-family:var(--font-story);font-weight:600;font-size:18px;line-height:1.3;color:var(--text)}
+.ask-title .who{color:var(--torch)}
+.ask-text{margin:-4px 0 0;font-size:13.5px;color:var(--text-dim)}
+.choices{display:grid;gap:8px}
+.choices.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.choices.two .ghost,.choices.two .wide{grid-column:1 / -1}
+.dice{display:flex;align-items:center;justify-content:center;gap:14px;padding:6px 0}
+.die{display:inline-grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:58px;height:58px;padding:9px;gap:3px;background:var(--text);border-radius:13px;box-shadow:inset 0 -4px 0 #cdbca3}
+.die i{border-radius:50%}
+.die i.on{background:var(--rock)}
+.die.red i.on{background:var(--ember)}
+.dice.rolling .die{animation:tumble .16s linear infinite}
+@keyframes tumble{0%{transform:rotate(-9deg)}50%{transform:rotate(9deg) translateY(-3px)}100%{transform:rotate(-9deg)}}
+.calc{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.calc.ok{color:var(--jade)}
+.calc.no{color:var(--ember)}
+
+/* ---------- Sheets ---------- */
+.overlay{position:fixed;inset:0;z-index:40;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.sheet{
+  width:100%;max-width:560px;max-height:90%;overflow:auto;background:var(--rock-2);
+  border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;
+  padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));
+  padding-block:20px calc(18px + env(safe-area-inset-bottom,0px));
+}
+.sheet h2{font-family:var(--font-title);font-weight:700;font-size:30px;color:var(--torch);margin:0 0 4px;line-height:1.25}
+.sheet h3{font-family:var(--font-story);font-weight:600;font-size:17px;margin:16px 0 6px;color:var(--gold)}
+.sheet p,.sheet li{max-width:62ch;font-size:14.5px}
+.sheet p{margin:4px 0}
+.sheet ol,.sheet ul{padding-left:1.3em;margin:4px 0;display:grid;gap:4px}
+.classlist{list-style:none;padding:0!important}
+.classlist li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px}
+.classlist .c-em{font-size:22px;line-height:1.3}
+.classlist small{display:block;color:var(--text-dim);font-size:13px}
+.sheet-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.sheet-actions .btn:only-child{grid-column:1 / -1}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<main class="app">
+
+  <!-- ===== Setup ===== -->
+  <section id="setup" class="stack" aria-labelledby="gameTitle">
+    <header class="hero-art">
+      <svg viewBox="0 0 240 150" aria-hidden="true">
+        <defs>
+          <radialGradient id="glow" cx="50%" cy="58%" r="45%">
+            <stop offset="0" stop-color="#8fd3ff" stop-opacity=".75"/>
+            <stop offset=".45" stop-color="#4cc6a2" stop-opacity=".22"/>
+            <stop offset="1" stop-color="#15110e" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <path d="M4 150V92C4 40 56 6 120 6s116 34 116 86v58" fill="none" stroke="#4a3a2c" stroke-width="3"/>
+        <path d="M30 150V98c0-40 40-66 90-66s90 26 90 66v52" fill="none" stroke="#3a2d22" stroke-width="3"/>
+        <path d="M56 150v-46c0-28 28-46 64-46s64 18 64 46v46" fill="#1f1814" stroke="#2b221b" stroke-width="3"/>
+        <circle cx="120" cy="96" r="58" fill="url(#glow)"/>
+        <path d="M120 70l15 22-15 26-15-26z" fill="#8fd3ff"/>
+        <path d="M120 70l15 22h-30z" fill="#d6f0ff"/>
+        <path d="M105 92h30l-15 26z" fill="#5fb6e6"/>
+        <path d="M74 150c8-12 22-16 34-12M166 150c-8-12-22-16-34-12" fill="none" stroke="#4cc6a2" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+        <path d="M100 30l-2 8M140 30l2 8M120 22v9" stroke="#8fd3ff" stroke-width="2" stroke-linecap="round" opacity=".55"/>
+      </svg>
+      <h1 id="gameTitle">ดวงแก้วเรียกฝน</h1>
+      <p>เกมลงดันเล่าเรื่อง เล่นเป็นทีม 3–6 คน ด้วยมือถือเครื่องเดียว · 3 ชั้น 3 ตอนจบ · ประมาณ 45–60 นาที (บันทึกได้)</p>
+    </header>
+
+    <div id="resume" class="card resume" hidden>
+      <div><b>มีการผจญภัยที่พักไว้</b><span id="resumeInfo"></span></div>
+      <button id="resumeBtn" type="button" class="btn primary">เล่นต่อ</button>
+    </div>
+
+    <div class="card">
+      <h2 id="countLabel">จำนวนผู้เล่น</h2>
+      <div id="countSeg" class="seg" role="radiogroup" aria-labelledby="countLabel"></div>
+      <h2>ใครเล่นเป็นฮีโร่อะไร</h2>
+      <p class="hint">ฮีโร่แต่ละแบบมีได้คนเดียว ถ้าเลือกซ้ำจะสลับกับอีกคนให้อัตโนมัติ</p>
+      <div id="seats" class="seats"></div>
+      <button id="startBtn" type="button" class="btn primary big">จุดคบไฟ ลงถ้ำ</button>
+      <button id="howBtn" type="button" class="btn ghost">วิธีเล่น</button>
+    </div>
+    <p id="found" class="found"></p>
+  </section>
+
+  <!-- ===== Game ===== -->
+  <section id="game" hidden>
+    <div class="topbar">
+      <div id="where" class="where"></div>
+      <button id="howBtn2" type="button" class="tbtn">วิธีเล่น</button>
+      <button id="exitBtn" type="button" class="tbtn">พักเกม</button>
+    </div>
+    <div id="party" class="party"></div>
+    <div id="res" class="res"></div>
+    <div id="stage"></div>
+    <div id="actions" class="actions" aria-live="polite"></div>
+  </section>
+</main>
+
+<!-- ===== How to play ===== -->
+<div id="how" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="howTitle">
+    <h2 id="howTitle">วิธีเล่น</h2>
+    <p>ทุกคนอยู่ทีมเดียวกัน ช่วยกันพาคณะลงถ้ำไปเอาดวงแก้วเรียกฝนคืนมา เกมมี 3 ชั้น เกมบันทึกให้ทุกฉาก พักแล้วกลับมาเล่นต่อได้</p>
+
+    <h3>ฉากเนื้อเรื่อง</h3>
+    <p>อ่านเรื่องออกเสียงให้ทุกคนฟัง แล้วช่วยกันเลือกทาง ทางเลือกที่มีป้าย <b>ทดสอบ</b> ให้เลือกว่าใครจะลอง แล้วทอยลูกเต๋า + ค่าความสามารถ (พลัง ไหวพริบ จิต) ต้องได้ตามที่กำหนด เกมจะบอกโอกาสสำเร็จของแต่ละคนให้เห็น</p>
+    <p><b>แรงใจ ♥</b> ของทีมใช้ทอยใหม่เมื่อทดสอบไม่ผ่าน ทางเลือกบางทางทำให้ได้หรือเสียแรงใจ</p>
+
+    <h3>การต่อสู้</h3>
+    <ul>
+      <li>ฮีโร่เล่นคนละตาตามลำดับที่นั่ง ครบทุกคนแล้วศัตรูจึงโจมตี</li>
+      <li><b>โจมตี</b>: ทอย 1 พลาด ทอย 6 คริติคอลแรงสองเท่า</li>
+      <li><b>ท่าพิเศษ</b> ใช้สมาธิ ◆◆ ได้สมาธิตาละ 1 (เก็บได้ 3)</li>
+      <li><b>ตั้งการ์ด</b>: รับดาเมจครึ่งเดียวจนถึงตาถัดไป และได้สมาธิเพิ่ม 1</li>
+      <li>ศัตรู <b>ผี</b> รับดาเมจครึ่งเดียว ยกเว้นจากหมอธรรม มีดเงา และน้ำมนต์ ศัตรูที่มี <b>เกราะ</b> ลดดาเมจทุกครั้งที่โดน</li>
+      <li>ใครหมดสติ หมอยาหรือยาสมุนไพรปลุกได้ ชนะแล้วทุกคนลุกขึ้นเอง ถ้าทั้งทีมหมดสติ ต้องเริ่มชั้นนั้นใหม่</li>
+    </ul>
+
+    <h3>ฮีโร่</h3>
+    <ul id="classList" class="classlist"></ul>
+
+    <h3>ของในย่าม</h3>
+    <ul id="itemList" class="classlist"></ul>
+
+    <div class="sheet-actions"><button type="button" class="btn primary" data-close>เข้าใจแล้ว</button></div>
+  </div>
+</div>
+
+<!-- ===== Pause confirm ===== -->
+<div id="confirm" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle">พักการผจญภัย?</h2>
+    <p>เกมบันทึกไว้ในมือถือเครื่องนี้แล้ว กลับมากด "เล่นต่อ" ได้ ฉากที่เล่นค้างอยู่ (รวมถึงการต่อสู้) จะเริ่มใหม่ตั้งแต่ต้นฉาก</p>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-close>เล่นต่อ</button>
+      <button id="confirmExit" type="button" class="btn primary">พักเกม</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+document.documentElement.lang = 'th';
+
+/* =====================================================================
+   Data
+   ===================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const REDUCED = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const KEY_SAVE = 'dvk-save-v1';
+const KEY_PREFS = 'dvk-prefs-v1';
+const KEY_END = 'dvk-endings-v1';
+
+const STATS = { pow: 'พลัง', wit: 'ไหวพริบ', spi: 'จิต' };
+
+const CLASSES = {
+  guard:  { name: 'ทหารเอก',   em: '🛡️', hp: 15, atk: 3, pow: 3, wit: 1, spi: 1, crit: 6, flavor: 'อดีตทหารรักษาวัง กำแพงเดินได้ของทีม',
+            sp: { name: 'ยืนหยัด', desc: 'ล่อศัตรูทุกตัวให้โจมตีตัวเอง และรับดาเมจน้อยลง 2 ต่อครั้ง จนถึงตาถัดไป' } },
+  healer: { name: 'หมอยา',     em: '🌿', hp: 10, atk: 2, pow: 0, wit: 2, spi: 2, crit: 6, flavor: 'รู้จักสมุนไพรทุกต้นในป่า ใครเจ็บต้องมาหา',
+            sp: { name: 'ยาหม้อใหญ่', desc: 'ทุกคน +4 HP และปลุกคนหมดสติให้ลุกขึ้น' },
+            extra: { name: 'พอกยา', desc: 'เพื่อน 1 คน +4 HP (ปลุกคนหมดสติได้)' } },
+  hunter: { name: 'พรานป่า',   em: '🏹', hp: 11, atk: 3, pow: 1, wit: 3, spi: 1, crit: 6, flavor: 'ตาไวกว่าเหยี่ยว ยิงธนูไม่เคยพลาดเป้านิ่ง',
+            sp: { name: 'ฝนธนู', desc: 'ยิงศัตรูทุกตัว ตัวละ 3' } },
+  boxer:  { name: 'นักมวย',    em: '🥊', hp: 12, atk: 4, pow: 2, wit: 2, spi: 0, crit: 6, flavor: 'แชมป์มวยงานวัดสามสมัย หมัดหนักกว่าคำพูด',
+            sp: { name: 'เข่าลอย', desc: 'ศัตรู 1 ตัวโดน 9 ไม่มีพลาด' } },
+  monk:   { name: 'หมอธรรม',   em: '📿', hp: 10, atk: 2, pow: 0, wit: 1, spi: 3, crit: 6, flavor: 'บวชเรียนมาเจ็ดพรรษา ตีผีได้เต็มแรง',
+            sp: { name: 'คาถามัดวิญญาณ', desc: 'ศัตรู 1 ตัวโดน 4 และขยับไม่ได้หนึ่งตา' } },
+  thief:  { name: 'นักย่องเบา', em: '🗡️', hp: 11, atk: 3, pow: 1, wit: 3, spi: 0, crit: 5, flavor: 'อดีตหัวขโมยที่กลับใจ คริติคอลเมื่อทอย 5–6',
+            sp: { name: 'มีดเงา', desc: 'ศัตรู 1 ตัวโดน 7 ทะลุเกราะและร่างผี อาจล้วงของติดมือ' } },
+};
+const CLASS_ORDER = ['guard', 'healer', 'hunter', 'boxer', 'monk', 'thief'];
+
+const ITEMS = {
+  herb: { name: 'ยาสมุนไพร', em: '🌱', desc: 'เพื่อน 1 คน +5 HP ปลุกคนหมดสติได้' },
+  holy: { name: 'น้ำมนต์',    em: '💧', desc: 'สาดศัตรูทุกตัว ผีโดน 6 ตัวอื่นโดน 2' },
+  bomb: { name: 'ประทัดยักษ์', em: '🧨', desc: 'ระเบิดใส่ศัตรูทุกตัว ตัวละ 3' },
+};
+
+const FOES = {
+  bat:      { name: 'ค้างคาวผี',      em: '🦇', hp: 5,  atk: 2, verb: 'กัด' },
+  batlord:  { name: 'จ่าฝูงค้างคาว',   em: '🦇', hp: 10, atk: 3, verb: 'ขย้ำ' },
+  croc:     { name: 'ไอ้ด่างตาบอด',   em: '🐊', hp: 34, atk: 5, armor: 1, boss: true, moves: ['tail'], verb: 'งับ' },
+  soldier:  { name: 'ทหารผีเฝ้าเมือง', em: '👻', hp: 18, atk: 3, spirit: true, verb: 'แทงหอกใส่' },
+  wisp:     { name: 'ผีโขมด',         em: '🔥', hp: 5,  atk: 2, spirit: true, verb: 'เผา' },
+  golem:    { name: 'ยักษ์ศิลา',       em: '🗿', hp: 10, atk: 3, armor: 1, verb: 'ทุบ' },
+  wraith:   { name: 'นางพรายเงา',     em: '👤', hp: 30, atk: 3, spirit: true, boss: true, moves: ['drain'], multi: 2, verb: 'ข่วน' },
+  snake:    { name: 'งูอาคม',         em: '🐍', hp: 6,  atk: 3, verb: 'ฉก' },
+  cobra:    { name: 'งูเห่าดำ',        em: '🐍', hp: 14, atk: 4, verb: 'พ่นพิษใส่' },
+  thongdam: { name: 'หมอทองดำ ร่างเงา', em: '🧙', hp: 50, atk: 5, armor: 1, boss: true, moves: ['summon', 'curse'], verb: 'ฟาดไม้เท้าใส่' },
+};
+
+const rep = (id, n) => Array.from({ length: Math.max(0, n) }, () => id);
+const ENCOUNTERS = {
+  bats:     { title: 'ฝูงค้างคาวผี', foes: N => [...rep('bat', N - 1), 'batlord'] },
+  croc:     { title: 'ไอ้ด่างตาบอด', foes: () => ['croc'] },
+  soldier:  { title: 'ทหารผีเฝ้าเมือง', foes: N => ['soldier', ...rep('wisp', N >= 5 ? 2 : 1)],
+              win: ['ร่างของทหารผีค่อย ๆ จางหาย ก่อนสลายไปเขาพึมพำ "ดวงใจ... ของเจ้าแม่... ต้องกลับคืน..."'] },
+  golems:   { title: 'ทวารบาลตื่น', foes: N => [...rep('golem', N - 1), ...(N >= 4 ? ['wisp'] : [])] },
+  wraith:   { title: 'นางพรายเงา', foes: () => ['wraith'] },
+  snakes:   { title: 'งูอาคม', foes: N => [...rep('snake', N - 1), 'cobra'] },
+  thongdam: { title: 'หมอทองดำ', foes: () => ['thongdam'] },
+};
+
+/* ---------- Story ---------- */
+const CHAPTERS = [
+  { eyebrow: 'บทนำ', where: 'บ้านโคกคำ', scenes: ['p_intro', 'p_party'] },
+  { eyebrow: 'ชั้นที่หนึ่ง', where: 'ถ้ำค้างคาว', scenes: ['c1_in', 'c1_rocks', 'c1_bats', 'c1_puak', 'c1_bridge', 'c1_camp', 'c1_croc', 'c1_diary'] },
+  { eyebrow: 'ชั้นที่สอง', where: 'เมืองลับใต้พิภพ', scenes: ['c2_in', 'c2_door', 'c2_soldier', 'c2_market', 'c2_golems', 'c2_camp', 'c2_wraith', 'c2_lab'] },
+  { eyebrow: 'ชั้นที่สาม', where: 'วังบาดาล', scenes: ['c3_in', 'c3_river', 'c3_eggs', 'c3_snakes', 'c3_camp', 'c3_boss', 'c3_final'] },
+];
+
+const SCENES = {
+  p_intro: { type: 'story', title: 'ฟ้าที่ลืมฝน', button: 'ไปพบเพื่อนร่วมทาง', text: [
+    'สามปีแล้วที่ฟ้าเหนือบ้านโคกคำไม่ยอมให้ฝนสักหยด นาแตกระแหงเป็นลายกระดองเต่า บ่อน้ำกลางหมู่บ้านเหลือแต่โคลน',
+    'คืนนี้หลวงตาเพียรเรียกพวกคุณมาที่ศาลาวัด ท่านค่อย ๆ แกะผ้าแดงที่เคยห่อ <b>ดวงแก้วเรียกฝน</b> สมบัติที่ปู่ย่าตายายเล่าว่าได้มาจากใต้แม่น้ำ ในผ้านั้นว่างเปล่า',
+    '"คืนที่แก้วหาย หมอทองดำก็หายไปด้วย" หลวงตาพูดเสียงแหบ "รอยเท้ามันมุ่งไปที่ถ้ำหลังวัดร้าง ถ้ำที่คนเฒ่าคนแก่ห้ามใครลงไปตั้งแต่สมัยปู่ทวด"',
+    'ทั้งหมู่บ้านไม่มีใครกล้าพอ ยกเว้นพวกคุณ',
+  ] },
+  p_party: { type: 'party', title: 'คนกล้าแห่งบ้านโคกคำ', button: 'จุดคบไฟ ลงถ้ำ', text: [
+    'หลวงตาเพียรผูกด้ายสายสิญจน์ที่ข้อมือของทุกคน "แรงใจของพวกเจ้าคือสิ่งที่จะพาให้กลับขึ้นมา" ท่านว่า "อย่าทิ้งกันกลางทาง"',
+  ] },
+
+  c1_in: { type: 'story', title: 'ปากถ้ำ', button: 'เดินลึกเข้าไป', text: [
+    'อากาศในถ้ำเย็นเฉียบผิดกับข้างนอก กลิ่นมูลค้างคาวฉุนจนแสบจมูก เสียงน้ำหยดดังก้องเป็นจังหวะ เหมือนมีใครกำลังนับถอยหลัง',
+    'บนผนังมีรอยมือเปื้อนดินแดงประทับไว้ เป็นรอยใหม่ ใครบางคนเพิ่งผ่านทางนี้ไปไม่นาน',
+  ] },
+  c1_rocks: { type: 'choice', title: 'หินถล่มขวางทาง', text: [
+    'ไม่ทันเดินไกล ทางข้างหน้าก็ถูกกองหินถล่มปิดไว้ ฝุ่นยังลอยฟุ้งอยู่เลย มันเพิ่งพังลงมา หรือใครบางคนจงใจทำให้มันพัง',
+  ], options: [
+    { label: 'งัดหินออก', check: ['pow', 5],
+      ok: { text: ['{who} ใช้ไม้คานงัดหินก้อนใหญ่จนกลิ้งออกไป ทางเปิดกว้างพอให้ทุกคนผ่าน'] },
+      fail: { text: ['หินก้อนบนสุดไถลลงมาทับขา{who} กว่าจะดึงออกได้ก็เลือดซึม'], fx: [['hp', -3, 'who']] } },
+    { label: 'มุดผ่านรอยแยกข้างผนัง', check: ['wit', 5],
+      ok: { text: ['{who} พาทุกคนลอดรอยแยกแคบ ๆ จนต้องถอดย่าม ระหว่างทางเจอย่ามเก่าของใครบางคนติดอยู่ ข้างในมียาสมุนไพร'], fx: [['item', 'herb', 1]] },
+      fail: { text: ['ผนังหินคมกริบบาดแขนบาดขาทุกคนจนถลอก แต่ก็ผ่านไปได้'], fx: [['hp', -1, 'all']] } },
+    { label: 'จุดธูปขอทางเจ้าที่', check: ['spi', 5],
+      ok: { text: ['ควันธูปของ{who}ลอยเข้าไปในซอกหิน แล้วเสียงครืนก็ดังขึ้นเบา ๆ หินเลื่อนเปิดเองราวกับมีมือที่มองไม่เห็นช่วย ทุกคนรู้สึกอุ่นใจขึ้นมาก'], fx: [['heart', 1]] },
+      fail: { text: ['ไม่มีอะไรเกิดขึ้น นอกจากเสียงหัวเราะแหบ ๆ ที่ดังมาจากความมืด สุดท้ายทุกคนต้องช่วยกันงัดหินจนเหนื่อยหอบ'], fx: [['hp', -1, 'all']] } },
+  ] },
+  c1_bats: { type: 'fight', enc: 'bats', title: 'ปีกนับร้อย', text: [
+    'แสงคบไฟปลุกบางอย่างให้ตื่น เพดานถ้ำทั้งผืนขยับได้ มันไม่ใช่หิน แต่เป็นปีกนับร้อย ตาแดงก่ำจ้องลงมาพร้อมกัน',
+  ], win: ['ฝูงค้างคาวแตกฮือหนีเข้าไปในความมืด เหลือแต่เสียงหัวใจของพวกคุณเองที่ยังเต้นแรง'] },
+  c1_puak: { type: 'choice', title: 'เสียงจากก้นหลุม', text: [
+    'ลึกเข้าไป มีเสียงครางดังมาจากหลุมข้างทาง ลุงเผือก คนหาของป่าจากหมู่บ้าน ตกลงไปขาหักมาสองวันแล้ว',
+    '"ช่วยข้าด้วย..." ลุงร้องเสียงแหบ "ข้าเห็นหมอทองดำเดินผ่านไปทางสะพานเชือก มันแบกอะไรเรืองแสงไปด้วย"',
+  ], options: [
+    { label: 'โรยเชือกลงไปดึงลุงขึ้นมา', check: ['pow', 6],
+      ok: { text: ['{who} ดึงเชือกทีละช่วงจนลุงเผือกขึ้นมาถึงปากหลุม ลุงยิ้มทั้งน้ำตา แล้วยื่นห่อไม้ไผ่ให้', '"แพพับได้ของข้าเอง เอาไปเถิด ข้างล่างลึก ๆ มีแม่น้ำ"'], fx: [['flag', 'puak'], ['flag', 'raft']] },
+      fail: { text: ['เชือกขาดกลางทาง! {who} หงายหลังกระแทกพื้นอย่างแรง แต่ทุกคนช่วยกันจนลากลุงขึ้นมาได้ในที่สุด', 'ลุงเผือกยื่นห่อไม้ไผ่ให้ "แพพับได้ของข้า เอาไปเถิด ข้างล่างลึก ๆ มีแม่น้ำ"'], fx: [['hp', -3, 'who'], ['flag', 'puak'], ['flag', 'raft']] } },
+    { label: 'โยนยาสมุนไพรลงไปให้ แล้วรีบไปต่อ', req: { item: 'herb' },
+      text: ['พวกคุณโยนห่อยาลงไป พร้อมสัญญาว่าจะกลับมารับ ลุงเผือกพยักหน้าช้า ๆ "ไปเถิด ไปเอาฝนกลับมา"'], fx: [['item', 'herb', -1], ['flag', 'puakherb']] },
+    { label: 'ทิ้งลุงไว้ก่อน เวลาไม่คอยใคร',
+      text: ['เสียงร้องของลุงเผือกตามหลังพวกคุณไปอีกนาน ไม่มีใครพูดอะไร แต่ทุกคนรู้สึกว่าบางอย่างในใจหนักขึ้น'], fx: [['heart', -1]] },
+  ] },
+  c1_bridge: { type: 'choice', title: 'สะพานเชือกเหนือเหว', text: [
+    'สะพานเชือกเก่าทอดข้ามเหวที่มืดจนมองไม่เห็นก้น แผ่นไม้ผุไปเกือบครึ่ง ลมเย็นพัดขึ้นมาจากข้างล่างจนสะพานแกว่งไปมา',
+    'อีกฝั่งมีแสงสีเขียวเรือง ๆ และกลิ่นคาวน้ำลอยมา',
+  ], options: [
+    { label: 'ให้คนคล่องตัวที่สุดข้ามไปผูกเชือกใหม่', check: ['wit', 6],
+      ok: { text: ['{who} ก้าวข้ามแผ่นไม้ผุทีละแผ่นอย่างแม่นยำ แล้วขึงเชือกเส้นใหม่ให้ทุกคนเกาะข้ามมาได้อย่างปลอดภัย'] },
+      fail: { text: ['แผ่นไม้หักกลางสะพาน! {who} ห้อยต่องแต่งอยู่เหนือเหวจนเพื่อน ๆ ช่วยกันดึงขึ้นมาได้'], fx: [['hp', -4, 'who']] } },
+    { label: 'ข้ามพร้อมกันทีเดียว ให้เร็วที่สุด',
+      text: ['ทุกคนวิ่งข้ามพร้อมกัน สะพานแกว่งอย่างบ้าคลั่ง มือแขนกระแทกเชือกจนช้ำไปตาม ๆ กัน แต่ก็ถึงอีกฝั่งครบทุกคน'], fx: [['hp', -2, 'all']] },
+  ] },
+  c1_camp: { type: 'camp', title: 'ลำธารใต้หินงอก', text: [
+    'ลำธารเล็ก ๆ ไหลผ่านโพรงหินงอก น้ำใสเย็นจนเห็นปลาไม่มีตาว่ายวนอยู่ ที่นี่เงียบพอให้พักได้สักครู่',
+  ] },
+  c1_croc: { type: 'fight', enc: 'croc', title: 'ไอ้ด่างตาบอด', text: [
+    'แสงสีเขียวที่เห็นมาจากเกล็ดของมันเอง จระเข้ตัวยาวเท่าเรือหางยาวนอนขวางทางลง ตาขาวขุ่นทั้งสองข้าง',
+    'มันมองไม่เห็น แต่หันหัวตามเสียงลมหายใจของพวกคุณได้ทุกคน',
+  ], win: ['ไอ้ด่างคำรามครั้งสุดท้ายแล้วลากตัวหนีลงไปในแอ่งน้ำลึก ทางลงชั้นถัดไปเปิดโล่ง'] },
+  c1_diary: { type: 'story', title: 'สมุดข่อยเปื้อนโคลน', button: 'ลงบันไดหิน', text: [
+    'ข้างรังของไอ้ด่างมีสมุดข่อยเล่มหนึ่งตกอยู่ ลายมือหวัด ๆ ของหมอทองดำเขียนไว้ว่า',
+    '<q>แก้วนี้ไม่ใช่ของมนุษย์ ปู่ย่าเรายืมมาจากวังข้างล่าง ทำไมต้องคอยยืมคนอื่นไปตลอด ในเมื่อเราเอามาเป็นของเราได้</q>',
+    'ท้ายหน้ามีรูปวาดบันไดหินที่ทอดลึกลงไปอีกชั้น',
+  ] },
+
+  c2_in: { type: 'story', title: 'เมืองที่ไม่มีใครรู้จัก', button: 'เดินเข้าเมือง', text: [
+    'บันไดหินพาลงไปสู่สิ่งที่ไม่มีใครคาดคิด ถนนปูอิฐ บ้านเรือนทรงโบราณ เจดีย์ที่ยอดหักทิ่มขึ้นไปจรดเพดานถ้ำ',
+    'เมืองทั้งเมืองซ่อนอยู่ใต้ดิน และเงียบเกินกว่าที่จะไม่มีใครอยู่',
+  ] },
+  c2_door: { type: 'choice', title: 'ประตูทองเหลือง', text: [
+    'ประตูทองเหลืองบานใหญ่ขวางถนนสายหลัก เมื่อแสงคบไฟส่องถึง อักษรโบราณบนบานประตูก็เรืองแสงขึ้นเป็นปริศนา',
+    '<q>สิ่งใดเอ่ย ยิ่งขุดยิ่งใหญ่ ยิ่งเติมยิ่งหาย</q>',
+    'ทุกคนช่วยกันคิด ตอบผิดอาจมีราคาที่ต้องจ่าย',
+  ], options: [
+    { label: 'ตอบว่า "เงามืด"',
+      text: ['ตัวอักษรเปลี่ยนเป็นสีแดงฉาน ลูกดอกพิษพุ่งออกจากรูบนผนังเข้าใส่ทุกคน ก่อนที่ประตูจะค่อย ๆ เปิดออก ราวกับลงโทษแล้วก็ยอมให้ผ่าน'], fx: [['hp', -2, 'all']] },
+    { label: 'ตอบว่า "หลุม"',
+      text: ['ประตูครางเสียงต่ำแล้วเปิดออกช้า ๆ ลมเย็นพัดสวนออกมาจนคบไฟเกือบดับ ทุกคนยิ้มให้กันอย่างภูมิใจ'], fx: [['heart', 1]] },
+    { label: 'ตอบว่า "ความโลภ"',
+      text: ['ตัวอักษรกะพริบเป็นสีแดง ราวกับจะบอกว่าใกล้แล้ว แต่ยังไม่ใช่ ลูกดอกพิษพุ่งออกจากผนังเข้าใส่ทุกคน ก่อนประตูจะยอมเปิดให้'], fx: [['hp', -2, 'all']] },
+  ] },
+  c2_soldier: { type: 'choice', title: 'ทหารผีเฝ้าเมือง', text: [
+    'กลางลานเมือง ทหารโบราณร่างโปร่งแสงยืนถือหอกขวางทาง ดวงไฟสีฟ้าลอยวนรอบตัวเขา',
+    '"คนบนดินอีกแล้ว" เขาพูดเสียงก้อง "คนแรกขโมยดวงใจของเจ้าแม่ไป พวกเจ้ามาขโมยอะไรอีก"',
+  ], options: [
+    { label: 'อธิบายว่ามาตามจับหัวขโมย', check: ['spi', 6],
+      ok: { text: ['{who} พูดด้วยน้ำเสียงหนักแน่น ทหารผีนิ่งฟังนาน ก่อนจะลดหอกลง', '"ดวงแก้วนั้นคือดวงใจของนาคีมณีรินทร์ เจ้าแม่แห่งวังบาดาล" เขากล่าว "มันให้ความเย็นแก่ไข่ของนาง และส่งฝนขึ้นไปยังโลกเบื้องบน ตามสัญญาเก่าที่คนของพวกเจ้าลืมไปแล้ว"', '"ถ้าพวกเจ้าเอามันคืนนางได้ ข้าจะยอมให้ผ่าน"'], fx: [['flag', 'truth'], ['heart', 1]] },
+      fail: { text: ['ทหารผีไม่เชื่อสักคำ "คนบนดินพูดเก่งเสมอ" เขาเงื้อหอกขึ้น ดวงไฟรอบตัวลุกโชน'], fx: [['fight', 'soldier']] } },
+    { label: 'ชักอาวุธ บุกผ่านไป',
+      text: ['"ก็ได้" ทหารผีหัวเราะเสียงก้อง "ให้หอกของข้าตัดสิน"'], fx: [['fight', 'soldier']] },
+    { label: 'แอบย่องผ่านเงาบ้านเรือน', check: ['wit', 7],
+      ok: { text: ['{who} นำทุกคนเลาะไปตามเงาบ้านเรือนจนพ้นลานเมืองโดยไม่มีใครรู้ตัว แต่ก็ไม่มีใครรู้ว่าทหารผีพูดถึงดวงใจของใคร'] },
+      fail: { text: ['เท้าของ{who}เตะกระถางดินแตกเสียงดังสนั่น ทหารผีหันขวับมาทันที'], fx: [['fight', 'soldier']] } },
+  ] },
+  c2_market: { type: 'choice', title: 'ตลาดผีโคมแดง', text: [
+    'ตรอกหนึ่งมีโคมสีแดงห้อยเรียงราย แผงลอยเต็มไปด้วยของแปลกตา คนขายไม่มีหน้า มีแต่ผ้าคลุมกับเสียงกระซิบ',
+    '"แลกไหม... แลกไหม... ของดีทั้งนั้น"',
+  ], options: [
+    { label: 'แลกเลือด 3 หยด กับน้ำมนต์ 2 ขวด', pick: true, sub: 'เลือกคนที่จะจ่าย −3 HP',
+      text: ['คนขายจิ้มเข็มเงินที่ปลายนิ้วของ{who} เลือดหยดลงถ้วยดินเผาสามหยด แล้วยื่นน้ำมนต์ให้สองขวด "ผีกลัวของแบบนี้ ใช้ให้คุ้มนะ..."'], fx: [['hp', -3, 'who'], ['item', 'holy', 2]] },
+    { label: 'แลกแรงใจ 1 ดวง กับยาสมุนไพร 2 ห่อ', req: { heart: 1 },
+      text: ['คนขายดึงด้ายสายสิญจน์เส้นหนึ่งออกจากข้อมือพวกคุณอย่างนุ่มนวล ทุกคนใจหายวาบ แต่ในมือก็มีห่อยาเพิ่มมาสองห่อ'], fx: [['heart', -1], ['item', 'herb', 2]] },
+    { label: 'ไม่แลก รีบเดินผ่านไป',
+      text: ['คนขายหัวเราะคิกคักตามหลัง "ไว้เจอกันขากลับนะ... ถ้ายังได้กลับ"'] },
+  ] },
+  c2_golems: { type: 'fight', enc: 'golems', title: 'ทวารบาลตื่น', text: [
+    'เสียงหินเสียดสีกันดังมาจากสองข้างทาง รูปปั้นยักษ์ทวารบาลหน้าวิหารร้างขยับนิ้วทีละนิ้ว',
+    'บนหน้าอกของพวกมันมีอักขระสีแดงสด ลายมือเดียวกับในสมุดข่อย หมอทองดำปลุกพวกมันไว้ขวางทาง',
+  ], win: ['ยักษ์ศิลาตัวสุดท้ายแตกเป็นเสี่ยง อักขระสีแดงบนเศษหินมอดดับลงเหมือนถ่านไฟ'] },
+  c2_camp: { type: 'camp', title: 'ศาลาริมสระบัว', text: [
+    'ศาลาไม้หลังเล็กริมสระบัวที่แห้งขอด เสื่อกกเก่ายังปูอยู่ ราวกับเจ้าของเพิ่งลุกไปเมื่อวาน',
+  ] },
+  c2_wraith: { type: 'fight', enc: 'wraith', title: 'นางพรายเงา', text: [
+    'ห้องสุดท้ายของวิหารเต็มไปด้วยขวดโหลบรรจุเงาดำที่ดิ้นได้ ขวดหนึ่งแตกออก เงาไหลรวมกันเป็นหญิงสาวผมยาวลากพื้น',
+    '"นายท่านสั่งไว้" เสียงของนางเย็นยิ่งกว่าน้ำในถ้ำ "ห้ามใครตามลงไป"',
+  ], win: ['นางพรายกรีดร้องแล้วแตกสลายเป็นควันดำ ขวดโหลทุกใบในห้องร้าวพร้อมกัน เงาที่ถูกขังไว้ลอยออกไปเป็นอิสระ'] },
+  c2_lab: { type: 'story', title: 'แผนที่นาข้าว', button: 'ลงสู่วังบาดาล', text: [
+    'บนโต๊ะของหมอทองดำมีแผนที่นาข้าวบ้านโคกคำ ทุกแปลงมีตัวเลขเขียนกำกับไว้ ข้างล่างมีบันทึกว่า',
+    '<q>เมื่อแก้วอยู่ในมือข้า ฝนจะตกเฉพาะนาของคนที่จ่ายให้ข้า ใครไม่จ่าย ก็รอฟ้าต่อไป</q>',
+    'ความจริงชัดเจนแล้ว หมอทองดำไม่ได้ขโมยแก้วไปช่วยใคร เขาจะขายฝน',
+    'ทางลงชั้นสุดท้ายเปิดอยู่หลังโต๊ะ เสียงน้ำไหลดังขึ้นมาจากเบื้องล่าง',
+  ] },
+
+  c3_in: { type: 'story', title: 'ผนังเกล็ดมรกต', button: 'เดินต่อ', text: [
+    'ยิ่งลงลึก เสียงน้ำยิ่งดังจนกลบเสียงฝีเท้า ผนังถ้ำค่อย ๆ เปลี่ยนเป็นเกล็ดสีเขียวมรกตเรียงซ้อนกัน',
+    'พวกคุณกำลังเดินเข้าไปในบ้านของบางสิ่งที่ใหญ่กว่ามนุษย์หลายร้อยเท่า',
+  ] },
+  c3_river: { type: 'choice', title: 'แม่น้ำสีนิล', text: [
+    'แม่น้ำสีดำไหลเชี่ยวกั้นขวางทาง อีกฝั่งคือประตูวังที่ประดับด้วยหัวนาคเจ็ดเศียร เปลวไฟสีฟ้าลุกอยู่ในปากของนาคทุกตัว',
+  ], options: [
+    { label: 'กางแพไม้ไผ่ของลุงเผือก', req: { flag: 'raft' }, hide: true,
+      text: ['แพเล็ก ๆ ของลุงเผือกกางออกได้พอดีทุกคน พาข้ามกระแสน้ำเชี่ยวไปถึงอีกฝั่งอย่างปลอดภัย น้ำใจที่ให้ไว้กลับมาช่วยในที่ที่ไม่มีใครคาดคิด'], fx: [['heart', 1]] },
+    { label: 'ขึงเชือกแล้วว่ายเกาะข้าม', check: ['pow', 6],
+      ok: { text: ['{who} ว่ายฝ่ากระแสไปผูกเชือกกับหัวนาคหินอีกฝั่ง ทุกคนเกาะเชือกข้ามมาได้ แม้จะเปียกโชกไปทั้งตัว'] },
+      fail: { text: ['กระแสน้ำกระชากเชือกหลุดมือ ทุกคนถูกพัดกระแทกโขดหินก่อนจะตะเกียกตะกายขึ้นฝั่งได้'], fx: [['hp', -2, 'all']] } },
+    { label: 'กระโดดข้ามโขดหินกลางน้ำ', check: ['wit', 6],
+      ok: { text: ['{who} ชี้ทางกระโดดข้ามโขดหินทีละก้อน ทุกคนตามไปติด ๆ จนถึงอีกฝั่งโดยไม่มีใครเปียกเลย'] },
+      fail: { text: ['โขดหินก้อนหนึ่งลื่นเป็นตะไคร่ {who} ไถลลงน้ำและถูกพัดไปไกลกว่าจะว่ายกลับมาได้'], fx: [['hp', -4, 'who']] } },
+  ] },
+  c3_eggs: { type: 'choice', title: 'รังไข่นาคา', text: [
+    'ห้องโถงกว้างเต็มไปด้วยไข่ใบใหญ่เท่าโอ่ง เปลือกไข่หลายใบร้าวเป็นทาง ความร้อนระอุแผ่ออกมาจากข้างใน',
+    'ไข่เหล่านี้กำลังจะตาย เพราะขาดความเย็นจากดวงแก้ว',
+  ], options: [
+    { label: 'ช่วยกันตักน้ำจากแม่น้ำมารดไข่', sub: 'ทุกคน −2 HP',
+      text: ['พวกคุณผลัดกันขนน้ำจากแม่น้ำจนแขนล้าไปหมด เปลือกไข่ค่อย ๆ เย็นลง เสียงหัวใจดวงเล็ก ๆ ข้างในเต้นแรงขึ้นทีละใบ'], fx: [['hp', -2, 'all'], ['flag', 'eggs']] },
+    { label: 'ใช้น้ำมนต์ 1 ขวดรดไข่', req: { item: 'holy' },
+      text: ['น้ำมนต์เพียงขวดเดียวกลายเป็นไอเย็นแผ่ไปทั่วห้องโถง เปลือกไข่ทุกใบหยุดร้าว แสงเรือง ๆ จากข้างในสว่างขึ้นราวกับขอบคุณ'], fx: [['item', 'holy', -1], ['flag', 'eggs']] },
+    { label: 'ไม่มีเวลา ต้องรีบตามหมอทองดำ',
+      text: ['พวกคุณเดินผ่านรังไข่ไปโดยไม่หันกลับมามอง เสียงเปลือกไข่ร้าวดังแกร๊กตามหลังมาเป็นระยะ'] },
+  ] },
+  c3_snakes: { type: 'fight', enc: 'snakes', title: 'งูอาคม', text: [
+    'งูสีดำตาแดงนับสิบตัวเลื้อยออกมาจากซอกหิน บนหัวของพวกมันมีอักขระสีแดงแบบเดียวกับยักษ์ศิลา',
+    'พวกมันคือบริวารของวังนี้ ที่ถูกสะกดให้หันมาทำร้ายบ้านของตัวเอง',
+  ], win: ['เมื่องูตัวสุดท้ายล้มลง อักขระบนหัวของมันก็มอดดับ งูที่รอดเลื้อยหนีไปอย่างงุนงง ราวกับเพิ่งตื่นจากฝันร้าย'] },
+  c3_camp: { type: 'camp', title: 'ศาลเจ้าแม่', text: [
+    'ห้องเล็ก ๆ ประดับเปลือกหอยมุก มีพวงมาลัยดอกบัวที่ยังสดวางอยู่ ใครบางคนในวังนี้ยังคอยดูแลศาลแห่งนี้ทุกวัน',
+    'นี่คือที่พักสุดท้ายก่อนถึงท้องพระโรง',
+  ] },
+  c3_boss: { type: 'fight', enc: 'thongdam', title: 'หมอทองดำ', text: [
+    'กลางท้องพระโรง หมอทองดำยืนอยู่บนแท่นหิน ชูดวงแก้วสีฟ้าใสที่ส่องแสงเย็นเยียบ เบื้องหลังเขา นาคตัวมหึมาเกล็ดสีมรกตถูกตรึงด้วยโซ่อาคมเจ็ดเส้น',
+    '"มาถึงนี่ได้ก็เก่งแล้ว" เขายิ้ม "แต่ฝนต่อจากนี้ต้องซื้อ บนโลกนี้ไม่มีของฟรีหรอก"',
+    'เงาดำพวยพุ่งออกจากตัวเขา ห่อหุ้มร่างจนกลายเป็นยักษ์เงาสูงเกือบจรดเพดาน',
+  ], win: ['ร่างเงาของหมอทองดำแตกกระจาย เหลือเพียงชายแก่ผอมโซคุกเข่าอยู่บนพื้น ดวงแก้วกลิ้งหลุดจากมือมาหยุดตรงหน้าพวกคุณ'] },
+  c3_final: { type: 'final', title: 'ดวงใจของนาคี', text: [
+    'โซ่อาคมทั้งเจ็ดเส้นขาดผึง นาคตัวมหึมาชูคอขึ้นจนสุดเพดาน ดวงตาสีทองมองดวงแก้ว แล้วมองพวกคุณ',
+    '"มนุษย์" เสียงของนางก้องไปทั้งวัง "ข้าคือนาคีมณีรินทร์ ดวงแก้วนั้นคือดวงใจของข้า ปู่ย่าของพวกเจ้าเคยยืมมันขึ้นไป และสัญญาว่าจะกลับมาไหว้ทุกปี แต่ไม่มีใครกลับมาอีกเลย"',
+  ], options: [
+    { label: 'ขอทำสัญญาใหม่กับนาคี', sub: 'ต้องรู้ความจริงจากทหารผี หรือได้ช่วยไข่นาคาไว้', req: { any: ['truth', 'eggs'] }, ending: 'pact' },
+    { label: 'คืนดวงแก้วให้นาคี', ending: 'return' },
+    { label: 'นำดวงแก้วกลับหมู่บ้าน', ending: 'take' },
+  ] },
+};
+
+const ENDINGS = {
+  pact: { title: 'สัญญาใต้แม่น้ำ', mark: 'ตอนจบที่ดีที่สุด', text: [
+    'พวกคุณวางดวงแก้วลงตรงหน้านาคี แล้วขอในสิ่งที่ปู่ย่าเคยลืม คือสัญญาที่ทั้งสองฝ่ายจะรักษาไว้',
+    '"ทุกปีเมื่อข้าวออกรวง ให้คนบ้านโคกคำนำดอกบัวลงมาไหว้ที่วังนี้ และดูแลแม่น้ำข้างบนให้ใสสะอาด" นาคีกล่าว "แล้วข้าจะส่งฝนขึ้นไปทุกฤดู ตราบที่พวกเจ้ายังจำ"',
+    'เมื่อพวกคุณกลับขึ้นมาถึงปากถ้ำ ฟ้าก็ร้องครืน และฝนแรกในรอบสามปีก็โปรยลงมา ทั้งหมู่บ้านวิ่งออกมายืนตากฝน หัวเราะทั้งน้ำตา',
+  ] },
+  return: { title: 'ฝนหนึ่งฤดู', mark: 'ตอนจบ', text: [
+    'พวกคุณวางดวงแก้วคืนตรงหน้านาคี นางรับมันกลับเข้าสู่อกช้า ๆ แสงสีฟ้าเย็นแผ่ไปทั่ววัง',
+    '"ขอบใจ มนุษย์" นางกล่าว "ข้าจะส่งฝนขึ้นไปหนึ่งฤดู เป็นค่าตอบแทนที่พวกเจ้าซื่อตรง"',
+    'ฝนตกที่บ้านโคกคำในคืนนั้นจริง ๆ แต่ปีหน้าจะเป็นอย่างไร ไม่มีใครรู้ หลวงตาเพียรได้แต่บอกว่า อย่างน้อยคราวนี้ เราก็ไม่ได้เอาของใครมาโดยไม่ขอ',
+  ] },
+  take: { title: 'ฝนที่ขโมยมา', mark: 'ตอนจบ', text: [
+    'พวกคุณกำดวงแก้วไว้แน่นแล้วหันหลังวิ่ง นาคีไม่ไล่ตาม นางเพียงหลับตาลงช้า ๆ',
+    'ทันทีที่ดวงแก้วขึ้นถึงศาลาวัด ฝนก็ตกลงมาอย่างหนัก ทั้งหมู่บ้านโห่ร้องฉลอง',
+    'แต่หลังจากนั้นไม่นาน แม่น้ำหน้าหมู่บ้านก็เริ่มลดลงอย่างประหลาด และในคืนที่ฝนหนักที่สุด พวกคุณได้ยินเสียงร้องไห้ดังมาจากใต้ดิน',
+  ] },
+};
+const ENDING_ORDER = ['pact', 'return', 'take'];
+
+/* =====================================================================
+   Helpers & state
+   ===================================================================== */
+const d6 = () => 1 + Math.floor(Math.random() * 6);
+const pickRandom = a => a[Math.floor(Math.random() * a.length)];
+const clone = o => JSON.parse(JSON.stringify(o));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const PIPS = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
+const dieHTML = v => `<span class="die${v === 1 || v === 4 ? ' red' : ''}" role="img" aria-label="ลูกเต๋า ${v}">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => `<i class="${PIPS[v].includes(i) ? 'on' : ''}"></i>`).join('')}</span>`;
+const chance = (stat, dc) => Math.max(0, Math.min(6, 7 - (dc - stat))) / 6;
+
+let S = null;            // saved game state
+let snap = null;         // copy of S at the start of the current scene
+let C = null;            // live combat (not saved)
+let uiTargets = new Map();
+let pendingResolve = null;
+let shownAt = 0;
+const FLOW = { gen: 0 };
+
+function sleep(ms) { const g = FLOW.gen; return new Promise(r => setTimeout(() => { if (g === FLOW.gen) r(); }, ms)); }
+const standing = () => S.party.filter(h => h.hp > 0);
+const aliveFoes = () => (C ? C.foes.filter(f => f.hp > 0) : []);
+const heroLabel = h => `<b>${esc(h.name)}</b>`;
+const fmt = (s, who) => s.replace(/\{who\}/g, who ? heroLabel(who) : 'ทุกคน');
+const chapter = () => CHAPTERS[S.ch];
+
+function newGame(seats) {
+  return {
+    v: 1, ch: 0, sc: 0, hearts: 2,
+    items: { herb: 2, holy: 0, bomb: 1 },
+    flags: {},
+    party: seats.map(s => ({ name: s.name, cls: s.cls, hp: CLASSES[s.cls].hp, max: CLASSES[s.cls].hp })),
+    ckpt: null,
+  };
+}
+function persist() {
+  snap = clone(S);
+  try { localStorage.setItem(KEY_SAVE, JSON.stringify(snap)); } catch (e) { /* storage unavailable */ }
+}
+function loadSave() {
+  try { const s = JSON.parse(localStorage.getItem(KEY_SAVE) || 'null'); return s && s.v === 1 && !s.done ? s : null; } catch (e) { return null; }
+}
+function clearSave() { try { localStorage.removeItem(KEY_SAVE); } catch (e) { /* ignore */ } }
+function foundEndings() { try { const a = JSON.parse(localStorage.getItem(KEY_END) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function markEnding(id) {
+  const a = foundEndings();
+  if (!a.includes(id)) a.push(id);
+  try { localStorage.setItem(KEY_END, JSON.stringify(a)); } catch (e) { /* ignore */ }
+  return a;
+}
+try { window.claude?.hot?.snapshot?.(() => ({ game: snap })); } catch (e) { /* not in a viewer */ }
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+function renderWhere() { const ch = chapter(); $('#where').textContent = `${ch.eyebrow} · ${ch.where}`; }
+
+function renderParty() {
+  $('#party').innerHTML = S.party.map((h, i) => {
+    const c = CLASSES[h.cls];
+    const key = 'h' + i;
+    const tgt = uiTargets.has(key);
+    const tag = tgt ? 'button' : 'div';
+    const pct = Math.round((h.hp / h.max) * 100);
+    const pips = C && h.hp > 0 ? `<span class="pips" aria-label="สมาธิ ${h.focus}">${'◆'.repeat(h.focus)}${'◇'.repeat(3 - h.focus)}</span>` : '';
+    const status = h.hp <= 0 ? 'หมดสติ' : `${h.hp}/${h.max}${h.def ? ' · การ์ด' : ''}${C && C.taunt === i ? ' · ล่อ' : ''}`;
+    return `<${tag}${tgt ? ' type="button"' : ''} class="hero${h.hp <= 0 ? ' down' : ''}${C && C.active === i ? ' active' : ''}${tgt ? ' target' : ''}${isFlashing(key) ? ' hurt' : ''}" data-key="${key}"><span class="h-top"><span class="h-em" aria-hidden="true">${c.em}</span><span class="h-name">${esc(h.name)}</span></span><span class="h-cls"><span>${c.name}</span>${pips}</span><span class="hpbar${pct < 35 ? ' low' : ''}"><i style="width:${pct}%"></i></span><span class="h-hp">${status}</span></${tag}>`;
+  }).join('');
+}
+
+function renderRes() {
+  const hearts = S.hearts ? Array.from({ length: S.hearts }, () => '<span class="hrt">♥</span>').join('') : 'หมด';
+  $('#res').innerHTML = `<span aria-label="แรงใจ ${S.hearts}">แรงใจ ${hearts}</span><span class="bag">${Object.keys(ITEMS).map(k => `<span class="${S.items[k] ? '' : 'zero'}" aria-label="${ITEMS[k].name} ${S.items[k]}">${ITEMS[k].em}×${S.items[k]}</span>`).join('')}</span>`;
+}
+
+function renderStory({ title, paras, before = '', after = '', eyebrow }) {
+  const ch = chapter();
+  $('#stage').innerHTML = `<article class="story"><div class="eyebrow">${eyebrow || `${ch.eyebrow} · ${ch.where}`}</div><h2 class="s-title">${title}</h2>${before}${paras.map(p => `<p>${p}</p>`).join('')}${after}</article>`;
+}
+
+function renderArena() {
+  if (!C) return;
+  $('#stage').innerHTML = `<div class="arena"><div class="arena-head"><b>${esc(C.title)}</b><span>รอบที่ ${C.round}</span></div><div class="foes">${C.foes.map(foeCard).join('')}</div><ol class="clog" aria-live="polite">${C.log.slice(-5).map(l => `<li class="${l.c || ''}">${l.t}</li>`).join('')}</ol></div>`;
+}
+function foeCard(f, i) {
+  const key = 'f' + i;
+  const tgt = uiTargets.has(key);
+  const tag = tgt ? 'button' : 'div';
+  const pct = Math.round((f.hp / f.max) * 100);
+  return `<${tag}${tgt ? ' type="button"' : ''} class="foe${f.boss ? ' boss' : ''}${f.hp <= 0 ? ' dead' : ''}${tgt ? ' target' : ''}${isFlashing(key) ? ' hurt' : ''}" data-key="${key}" aria-label="${esc(f.name)} HP ${f.hp} จาก ${f.max}"><span class="f-em" aria-hidden="true">${f.em}</span><span class="f-name">${esc(f.name)}</span><span class="hpbar"><i style="width:${pct}%"></i></span><span class="f-hp">${f.hp <= 0 ? 'ล้มแล้ว' : `${f.hp}/${f.max}`}</span><span class="badges">${f.boss ? '<em>บอส</em>' : ''}${f.spirit ? '<em>ผี</em>' : ''}${f.armor ? `<em>เกราะ ${f.armor}</em>` : ''}${f.stun ? '<em class="stun">มึน</em>' : ''}</span></${tag}>`;
+}
+
+function renderAll() {
+  if (!S) return;
+  renderParty();
+  renderRes();
+  if (C) renderArena();
+}
+
+const flashUntil = new Map();
+const isFlashing = key => (flashUntil.get(key) || 0) > performance.now();
+function flash(key) {
+  flashUntil.set(key, performance.now() + 450);
+  const el = document.querySelector(`[data-key="${key}"]`);
+  if (!el) return;
+  el.classList.remove('hurt');
+  void el.offsetWidth;
+  el.classList.add('hurt');
+}
+
+/* =====================================================================
+   Prompts
+   ===================================================================== */
+function ask({ title = '', text = '', extra = '', buttons = [], targets = [], layout = '' }) {
+  const g = FLOW.gen;
+  uiTargets = new Map(targets);
+  return new Promise(resolve => {
+    pendingResolve = value => {
+      if (g !== FLOW.gen) return;
+      pendingResolve = null;
+      uiTargets = new Map();
+      renderAll();
+      resolve(value);
+    };
+    $('#actions').innerHTML = `<div class="ask">${title ? `<div class="ask-title">${title}</div>` : ''}${text ? `<p class="ask-text">${text}</p>` : ''}${extra}${buttons.length ? `<div class="choices ${layout}">${buttons.map((b, i) => `<button type="button" class="btn ${b.cls || ''}${b.primary ? ' primary' : ''}" data-i="${i}"${b.disabled ? ' disabled' : ''}><span>${b.html ?? esc(b.label)}</span>${b.sub ? `<small>${b.sub}</small>` : ''}</button>`).join('')}</div>` : ''}</div>`;
+    $('#actions').querySelectorAll('.choices .btn').forEach(el => el.addEventListener('click', () => {
+      if (!pendingResolve || performance.now() - shownAt < 250) return;
+      pendingResolve(buttons[+el.dataset.i].value);
+    }));
+    shownAt = performance.now();
+    renderAll();
+  });
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-key]');
+  if (!el || !pendingResolve || !uiTargets.has(el.dataset.key)) return;
+  if (performance.now() - shownAt < 250) return;
+  pendingResolve(uiTargets.get(el.dataset.key));
+});
+
+const next = (label = 'ไปต่อ') => ask({ buttons: [{ value: true, label, primary: true }] });
+
+function pickHero({ title, text = '', downed = false, alive = true, back = false, sub = () => '' }) {
+  const list = S.party.map((h, i) => ({ h, i })).filter(({ h }) => (h.hp > 0 && alive) || (h.hp <= 0 && downed));
+  const buttons = list.map(({ h, i }) => ({ value: i, html: `${CLASSES[h.cls].em} ${esc(h.name)} · ${CLASSES[h.cls].name}`, sub: sub(h) }));
+  if (back) buttons.push({ value: null, label: 'ย้อนกลับ', cls: 'ghost' });
+  return ask({ title, text, buttons, targets: list.map(({ i }) => ['h' + i, i]) });
+}
+
+async function pickFoe(title) {
+  const list = C.foes.map((f, i) => ({ f, i })).filter(({ f }) => f.hp > 0);
+  if (list.length === 1) return list[0].i;
+  return ask({
+    title, text: 'แตะศัตรูบนจอ หรือเลือกด้านล่าง', layout: 'two',
+    buttons: list.map(({ f, i }) => ({ value: i, html: `${f.em} ${esc(f.name)}`, sub: `HP ${f.hp}/${f.max}` })).concat([{ value: null, label: 'ย้อนกลับ', cls: 'ghost' }]),
+    targets: list.map(({ i }) => ['f' + i, i]),
+  });
+}
+
+/* =====================================================================
+   Story flow
+   ===================================================================== */
+async function runGame() {
+  for (;;) {
+    const ch = chapter();
+    if (S.sc === 0) { S.ckpt = null; S.ckpt = clone(S); }
+    persist();
+    renderWhere();
+    renderAll();
+    window.scrollTo({ top: 0, behavior: REDUCED ? 'auto' : 'smooth' });
+    const res = await runScene(SCENES[ch.scenes[S.sc]]);
+    if (res === 'wipe') { await gameOver(); return; }
+    if (res && res.ending) { await showEnding(res.ending); return; }
+    S.sc++;
+    if (S.sc >= ch.scenes.length) { S.ch++; S.sc = 0; }
+  }
+}
+
+async function runScene(sc) {
+  C = null;
+  switch (sc.type) {
+    case 'story':
+      renderStory({ title: sc.title, paras: sc.text });
+      await next(sc.button);
+      return null;
+    case 'party':
+      renderStory({
+        title: sc.title, paras: sc.text,
+        after: `<div class="roster">${S.party.map(h => { const c = CLASSES[h.cls]; return `<div><span class="r-em" aria-hidden="true">${c.em}</span><span><b>${esc(h.name)}</b> · ${c.name}<br><span>${c.flavor}</span></span></div>`; }).join('')}</div>`,
+      });
+      await next(sc.button);
+      return null;
+    case 'choice': return choiceScene(sc);
+    case 'fight': {
+      renderStory({ title: sc.title, paras: sc.text });
+      await next('เข้าต่อสู้!');
+      const r = await combat(sc.enc);
+      if (r === 'lose') return 'wipe';
+      renderStory({ title: sc.title, paras: sc.win || ['ศัตรูล้มลงหมดแล้ว'], after: reviveNote() });
+      await next();
+      return null;
+    }
+    case 'camp': return campScene(sc);
+    case 'final': return finalScene(sc);
+  }
+  return null;
+}
+
+function meets(req) {
+  if (!req) return true;
+  if (req.item && !S.items[req.item]) return false;
+  if (req.heart && S.hearts < req.heart) return false;
+  if (req.flag && !S.flags[req.flag]) return false;
+  if (req.any && !req.any.some(f => S.flags[f])) return false;
+  return true;
+}
+function reqHint(req) {
+  if (!req) return '';
+  if (req.item) return `ต้องมี${ITEMS[req.item].name} (มี ${S.items[req.item]})`;
+  if (req.heart) return `ใช้แรงใจ ${req.heart} (มี ${S.hearts})`;
+  return '';
+}
+
+async function choiceScene(sc) {
+  renderStory({ title: sc.title, paras: sc.text });
+  const opts = sc.options.map((o, i) => ({ o, i })).filter(({ o }) => !(o.hide && !meets(o.req)));
+  const i = await ask({
+    title: 'ทีมจะทำอย่างไร',
+    buttons: opts.map(({ o, i }) => ({
+      value: i,
+      html: `${esc(o.label)}${o.check ? `<span class="tag">ทดสอบ${STATS[o.check[0]]} ${o.check[1]}+</span>` : ''}`,
+      sub: o.sub || reqHint(o.req),
+      disabled: !meets(o.req),
+    })),
+  });
+  const o = sc.options[i];
+  let out = o;
+  let who = null;
+  let rollBadge = '';
+  if (o.check) {
+    const [stat, dc] = o.check;
+    const hi = await pickHero({
+      title: `ใครจะ${esc(o.label)}`,
+      text: `ทอยลูกเต๋า + ${STATS[stat]} ต้องได้ ${dc} ขึ้นไป`,
+      sub: h => `${STATS[stat]} +${CLASSES[h.cls][stat]} · โอกาส ${Math.round(chance(CLASSES[h.cls][stat], dc) * 100)}%`,
+    });
+    who = S.party[hi];
+    let r = await doRoll(who, stat, dc);
+    while (!r.ok && S.hearts > 0) {
+      const again = await ask({
+        title: 'ไม่ผ่าน!', text: `ใช้แรงใจ 1 ดวงเพื่อทอยใหม่ได้ (เหลือ ${S.hearts})`,
+        extra: `<div class="dice">${dieHTML(r.roll)}<span class="calc no">${r.roll} + ${r.bonus} = ${r.roll + r.bonus} (ต้องได้ ${dc})</span></div>`,
+        buttons: [{ value: true, label: 'ใช้แรงใจ ทอยใหม่', primary: true }, { value: false, label: 'ยอมรับผล', cls: 'ghost' }],
+      });
+      if (!again) break;
+      S.hearts--;
+      renderRes();
+      r = await doRoll(who, stat, dc);
+    }
+    out = r.ok ? o.ok : o.fail;
+    rollBadge = `<div class="rollres ${r.ok ? 'ok' : 'no'}">${r.ok ? 'สำเร็จ' : 'ไม่ผ่าน'} · ทอย ${r.roll} + ${STATS[stat]} ${r.bonus} = ${r.roll + r.bonus} (ต้องได้ ${dc})</div>`;
+  } else if (o.pick) {
+    const hi = await pickHero({ title: 'ใครจะเป็นคนจ่าย', sub: h => `HP ${h.hp}/${h.max}` });
+    who = S.party[hi];
+  }
+  const fx = out.fx || [];
+  const chips = applyFx(fx, who);
+  renderStory({
+    title: sc.title,
+    before: `<p class="picked">› ${esc(o.label)}</p>${rollBadge}`,
+    paras: (out.text || []).map(t => fmt(t, who)),
+    after: chips.length ? `<div class="fx">${chips.join('')}</div>` : '',
+  });
+  const fight = fx.find(f => f[0] === 'fight');
+  await next(fight ? 'เข้าต่อสู้!' : 'ไปต่อ');
+  if (fight) {
+    const r = await combat(fight[1]);
+    if (r === 'lose') return 'wipe';
+    const enc = ENCOUNTERS[fight[1]];
+    renderStory({ title: sc.title, paras: enc.win || ['ศัตรูล้มลงหมดแล้ว'], after: reviveNote() });
+    await next();
+  }
+  return null;
+}
+
+async function doRoll(h, stat, dc) {
+  const bonus = CLASSES[h.cls][stat];
+  const roll = d6();
+  $('#actions').innerHTML = `<div class="ask"><div class="ask-title"><span class="who">${esc(h.name)}</span> ทดสอบ${STATS[stat]}</div><div class="dice rolling">${dieHTML(d6())}<span class="calc">… + ${bonus}</span></div></div>`;
+  const box = $('#actions .dice');
+  for (let f = 0; f < (REDUCED ? 0 : 6); f++) { await sleep(75); box.innerHTML = `${dieHTML(d6())}<span class="calc">… + ${bonus}</span>`; }
+  const ok = roll + bonus >= dc;
+  box.classList.remove('rolling');
+  box.innerHTML = `${dieHTML(roll)}<span class="calc ${ok ? 'ok' : 'no'}">${roll} + ${bonus} = ${roll + bonus} ${ok ? 'สำเร็จ!' : 'ไม่ผ่าน'}</span>`;
+  await sleep(REDUCED ? 300 : 900);
+  return { ok, roll, bonus };
+}
+
+function applyFx(fx, who) {
+  const chips = [];
+  for (const [kind, a, b] of fx) {
+    if (kind === 'hp') {
+      const targets = b === 'all' ? standing() : who ? [who] : [];
+      targets.forEach(h => {
+        const before = h.hp;
+        h.hp = a < 0 ? Math.max(1, h.hp + a) : Math.min(h.max, h.hp + a); // story never knocks anyone out
+        const d = h.hp - before;
+        if (b !== 'all' && d) chips.push(`<span class="${d < 0 ? 'bad' : 'good'}">${esc(h.name)} ${d > 0 ? '+' : '−'}${Math.abs(d)} HP</span>`);
+      });
+      if (b === 'all') chips.push(`<span class="${a < 0 ? 'bad' : 'good'}">ทุกคน ${a > 0 ? '+' : '−'}${Math.abs(a)} HP</span>`);
+    } else if (kind === 'item') {
+      S.items[a] = Math.max(0, S.items[a] + b);
+      chips.push(`<span class="${b > 0 ? 'good' : 'bad'}">${b > 0 ? '+' : '−'}${Math.abs(b)} ${ITEMS[a].name}</span>`);
+    } else if (kind === 'heart') {
+      const before = S.hearts;
+      S.hearts = Math.max(0, S.hearts + a);
+      if (S.hearts !== before) chips.push(`<span class="${a > 0 ? 'good' : 'bad'}">แรงใจ ${a > 0 ? '+' : '−'}${Math.abs(a)} ♥</span>`);
+    } else if (kind === 'flag') {
+      S.flags[a] = true;
+    }
+  }
+  renderAll();
+  return chips;
+}
+
+function reviveNote() {
+  const ups = S.party.filter(h => h.wasDown);
+  S.party.forEach(h => { delete h.wasDown; });
+  return ups.length ? `<div class="fx"><span class="good">${ups.map(h => esc(h.name)).join(', ')} ลุกขึ้นมาได้ (HP 1)</span></div>` : '';
+}
+
+async function campScene(sc) {
+  renderStory({ title: sc.title, paras: sc.text });
+  const c = await ask({
+    title: 'จะใช้เวลาตรงนี้ทำอะไร',
+    buttons: [
+      { value: 'rest', label: 'พักผ่อนให้เต็มที่', sub: 'ทุกคน +6 HP' },
+      { value: 'search', label: 'ค้นหาของรอบ ๆ', sub: 'ได้ของ 2 ชิ้น · ทุกคน +2 HP' },
+      { value: 'tale', label: 'ล้อมวงเล่าเรื่องบ้าน', sub: 'แรงใจ +1 · ทุกคน +3 HP' },
+    ],
+  });
+  let fx;
+  let text;
+  if (c === 'rest') {
+    fx = [['hp', 6, 'all']];
+    text = ['ทุกคนผลัดกันเฝ้ายาม คนที่เหลือหลับไปพักใหญ่ เมื่อตื่นขึ้นมา บาดแผลก็ทุเลาลงมาก'];
+  } else if (c === 'search') {
+    const found = [pickRandom(['herb', 'herb', 'holy', 'bomb']), pickRandom(['herb', 'holy', 'bomb'])];
+    fx = [['hp', 2, 'all'], ...found.map(k => ['item', k, 1])];
+    text = ['ทุกคนแยกกันค้นตามซอกหิน บางอย่างที่คนเคยผ่านมาทิ้งไว้ยังใช้การได้'];
+  } else {
+    fx = [['hp', 3, 'all'], ['heart', 1]];
+    text = ['ใครคนหนึ่งเริ่มเล่าถึงกลิ่นดินหลังฝนตก ที่หมู่บ้านไม่ได้กลิ่นมาสามปีแล้ว คนอื่น ๆ ต่อเรื่องกันคนละประโยค จนทุกคนยิ้มออก'];
+  }
+  const chips = applyFx(fx, null);
+  renderStory({ title: sc.title, paras: text, after: `<div class="fx">${chips.join('')}</div>` });
+  await next('ออกเดินทางต่อ');
+  return null;
+}
+
+async function finalScene(sc) {
+  const paras = [...sc.text];
+  if (S.flags.truth) paras.push('"ทหารเฝ้าเมืองคงบอกพวกเจ้าแล้วสินะ" นางว่า "ข้าเห็นในแววตาของพวกเจ้า"');
+  if (S.flags.eggs) paras.push('ลูกนาคตัวเล็ก ๆ หลายตัวเลื้อยออกมาพันขาพวกคุณ นาคีมองภาพนั้นนิ่ง ๆ แล้วแววตาของนางก็อ่อนลง');
+  paras.push('ดวงแก้วอยู่ในมือพวกคุณแล้ว ทุกคนต้องตัดสินใจร่วมกัน');
+  renderStory({ title: sc.title, paras });
+  const i = await ask({
+    title: 'ทีมตัดสินใจว่า',
+    buttons: sc.options.map((o, i) => ({ value: i, label: o.label, sub: o.req ? (meets(o.req) ? 'ปลดล็อกแล้ว' : o.sub) : '', disabled: !meets(o.req) })),
+  });
+  return { ending: sc.options[i].ending };
+}
+
+async function showEnding(id) {
+  const e = ENDINGS[id];
+  const epi = [];
+  if (S.flags.puak) epi.push('ลุงเผือกเดินกะเผลกมารอรับที่ปากถ้ำ แล้วเล่าเรื่องของพวกคุณให้เด็ก ๆ ฟังทุกคืนจนจำได้ขึ้นใจ');
+  else if (S.flags.puakherb) epi.push('สามวันต่อมา ลุงเผือกคลานออกมาจากถ้ำได้เอง ผอมโซแต่ยังมีชีวิต และไม่เคยลืมห่อยาที่พวกคุณโยนลงไปให้');
+  else epi.push('ไม่มีใครเห็นลุงเผือกอีกเลย บางคืนพวกคุณยังได้ยินเสียงเรียกแผ่ว ๆ ดังมาจากทางปากถ้ำ');
+  if (S.flags.eggs && id !== 'take') epi.push('ลูกนาคเจ็ดตัวฟักออกจากไข่ที่พวกคุณช่วยไว้ ทุกฤดูฝน ชาวบ้านจะเห็นรุ้งเจ็ดสีพาดข้ามแม่น้ำ');
+  if (!S.flags.eggs && id === 'take') epi.push('ไข่นาคาที่ไม่มีใครช่วยไว้ คงไม่มีวันได้ฟักออกมา');
+  const found = markEnding(id);
+  S.done = true;
+  snap = null;
+  clearSave();
+  renderStory({
+    eyebrow: 'ตอนจบ', title: e.title, paras: e.text,
+    before: `<p class="end-mark">${e.mark} · ค้นพบแล้ว ${found.length}/${ENDING_ORDER.length}</p>`,
+    after: `<div class="epi">${epi.map(p => `<p>${p}</p>`).join('')}</div>`,
+  });
+  const c = await ask({
+    title: 'จบการผจญภัย',
+    text: found.length < ENDING_ORDER.length ? 'ยังมีตอนจบอื่นรออยู่ ลองเลือกทางที่ต่างออกไปดูสิ' : 'ค้นพบครบทุกตอนจบแล้ว เก่งมาก!',
+    buttons: [{ value: 'again', label: 'เล่นใหม่ด้วยทีมเดิม', primary: true }, { value: 'home', label: 'กลับหน้าแรก', cls: 'ghost' }],
+  });
+  if (c === 'again') startGame(S.party.map(h => ({ name: h.name, cls: h.cls })));
+  else showSetup();
+}
+
+async function gameOver() {
+  renderStory({
+    eyebrow: 'คบไฟดับ', title: 'ความมืดกลืนทุกคน',
+    paras: ['คบไฟดวงสุดท้ายตกลงพื้นแล้วมอดดับ ความเงียบในถ้ำหนักอึ้ง', 'แต่ด้ายสายสิญจน์ที่ข้อมือยังอุ่นอยู่ หลวงตาเพียรพูดไว้ว่าแรงใจจะพาพวกคุณกลับขึ้นมา'],
+  });
+  const c = await ask({
+    title: 'ทีมหมดสติทั้งหมด',
+    buttons: [{ value: 'retry', label: `ลองใหม่ตั้งแต่ต้น${chapter().eyebrow}`, primary: true }, { value: 'home', label: 'กลับหน้าแรก', cls: 'ghost' }],
+  });
+  if (c === 'retry' && S.ckpt) { const ck = clone(S.ckpt); FLOW.gen++; S = ck; enterGame(); runGame(); }
+  else showSetup();
+}
+
+/* =====================================================================
+   Combat
+   ===================================================================== */
+// [minions, bosses] HP multiplier by party size; a 3-hero party deals well under 3/4 of a 4-hero party's damage.
+const FOE_SCALE = { 3: [0.8, 0.6], 4: [1, 1], 5: [1.1, 1.4], 6: [1.2, 1.75] };
+function makeFoe(id, N) {
+  const d = FOES[id];
+  const scale = FOE_SCALE[N][d.boss ? 1 : 0];
+  const hp = Math.max(3, Math.round(d.hp * scale));
+  return { id, name: d.name, em: d.em, hp, max: hp, atk: d.atk, armor: d.armor || 0, spirit: !!d.spirit, boss: !!d.boss, moves: d.moves || null, multi: d.multi || 1, verb: d.verb, stun: false };
+}
+function clog(t, c = '') { C.log.push({ t, c }); if (C.log.length > 30) C.log.shift(); }
+
+function hitFoe(fi, dmg, { pierce = false, holy = false } = {}) {
+  const f = C.foes[fi];
+  let d = dmg;
+  if (f.spirit && !holy && !pierce) d = Math.ceil(d / 2);
+  if (f.armor && !pierce) d = Math.max(1, d - f.armor);
+  f.hp = Math.max(0, f.hp - d);
+  return d;
+}
+function hurtHero(hi, dmg) {
+  const h = S.party[hi];
+  let d = dmg;
+  if (h.def) d = Math.ceil(d / 2);
+  if (h.guard) d = Math.max(0, d - h.guard);
+  h.hp = Math.max(0, h.hp - d);
+  return d;
+}
+
+async function combat(encId) {
+  const N = S.party.length;
+  const enc = ENCOUNTERS[encId];
+  C = { title: enc.title, foes: enc.foes(N).map(id => makeFoe(id, N)), round: 0, log: [], taunt: -1, active: -1 };
+  S.party.forEach(h => { h.focus = 1; h.def = false; h.guard = 0; delete h.wasDown; });
+  if (encId === 'thongdam' && S.flags.eggs) {
+    const b = C.foes[0];
+    b.hp -= 8;
+    clog('ลูกนาคที่พวกคุณช่วยไว้พุ่งออกมาฉกหมอทองดำก่อนใคร! (−8)', 'good');
+  }
+  if (encId === 'thongdam' && S.flags.truth) {
+    S.party.forEach(h => { h.focus = 2; });
+    clog('ทหารผีเฝ้าเมืองปรากฏตัวยืนข้างพวกคุณ ทุกคนเริ่มด้วยสมาธิ ◆◆', 'good');
+  }
+  renderAll();
+  for (;;) {
+    C.round++;
+    clog(`รอบที่ ${C.round}`, 'round');
+    for (let i = 0; i < S.party.length; i++) {
+      const h = S.party[i];
+      if (h.hp <= 0) continue;
+      if (!aliveFoes().length) break;
+      if (C.round > 1) h.focus = Math.min(3, h.focus + 1);
+      h.def = false;
+      if (C.taunt === i) { C.taunt = -1; h.guard = 0; }
+      C.active = i;
+      renderAll();
+      await heroTurn(i);
+      renderAll();
+    }
+    C.active = -1;
+    if (!aliveFoes().length) break;
+    renderAll();
+    await sleep(REDUCED ? 100 : 350);
+    for (const f of C.foes.slice()) {
+      if (f.hp <= 0) continue;
+      await foeTurn(f);
+      renderAll();
+      if (!standing().length) { clog('ทั้งทีมหมดสติ...', 'bad'); renderAll(); await sleep(REDUCED ? 200 : 900); C = null; return 'lose'; }
+      await sleep(REDUCED ? 120 : 480);
+    }
+  }
+  clog('ชนะแล้ว!', 'good');
+  renderAll();
+  await sleep(REDUCED ? 150 : 600);
+  S.party.forEach(h => {
+    if (h.hp <= 0) { h.hp = 1; h.wasDown = true; }
+    delete h.focus; delete h.def; delete h.guard;
+  });
+  C = null;
+  return 'win';
+}
+
+async function heroTurn(i) {
+  const h = S.party[i];
+  const c = CLASSES[h.cls];
+  for (;;) {
+    const buttons = [
+      { value: 'atk', label: 'โจมตี', sub: `แรง ${c.atk}${h.cls === 'monk' ? ' · เต็มแรงกับผี' : ''}` },
+      { value: 'sp', html: `${c.sp.name} <span class="tag">◆◆</span>`, sub: c.sp.desc, cls: 'special', disabled: h.focus < 2 },
+    ];
+    if (c.extra) buttons.push({ value: 'extra', html: `${c.extra.name} <span class="tag">◆</span>`, sub: c.extra.desc, disabled: h.focus < 1 });
+    buttons.push({ value: 'def', label: 'ตั้งการ์ด', sub: 'รับดาเมจครึ่งเดียว · สมาธิ +1' });
+    const nItems = Object.values(S.items).reduce((a, b) => a + b, 0);
+    buttons.push({ value: 'item', label: 'ใช้ของในย่าม', sub: nItems ? Object.keys(ITEMS).filter(k => S.items[k]).map(k => `${ITEMS[k].em}${S.items[k]}`).join(' ') : 'ย่ามว่าง', disabled: !nItems });
+    if (buttons.length % 2) buttons[buttons.length - 1].cls = 'wide';
+    const a = await ask({
+      title: `ตาของ <span class="who">${esc(h.name)}</span>`,
+      text: `${c.em} ${c.name} · HP ${h.hp}/${h.max} · สมาธิ ${'◆'.repeat(h.focus)}${'◇'.repeat(3 - h.focus)}`,
+      buttons, layout: 'two',
+    });
+    if (await doAction(i, a)) return;
+  }
+}
+
+async function doAction(i, a) {
+  const h = S.party[i];
+  const c = CLASSES[h.cls];
+  const name = esc(h.name);
+  if (a === 'atk') {
+    const fi = await pickFoe(`${name} จะโจมตีตัวไหน`);
+    if (fi === null) return false;
+    const r = d6();
+    const f = C.foes[fi];
+    if (r === 1) { clog(`${name} โจมตี${esc(f.name)} แต่พลาด (ทอย 1)`); return true; }
+    const crit = r >= c.crit;
+    const d = hitFoe(fi, crit ? c.atk * 2 : c.atk, { holy: h.cls === 'monk' });
+    clog(`${name} โจมตี${esc(f.name)} −${d}${crit ? ' คริติคอล!' : ''}${f.hp <= 0 ? ' ล้มลง!' : ''}`, crit ? 'good' : '');
+    renderAll(); flash('f' + fi);
+    return true;
+  }
+  if (a === 'def') {
+    h.def = true;
+    h.focus = Math.min(3, h.focus + 1);
+    clog(`${name} ตั้งการ์ดรอรับ`);
+    return true;
+  }
+  if (a === 'extra') {
+    const ti = await pickHero({ title: `${name} จะพอกยาให้ใคร`, downed: true, back: true, sub: x => x.hp > 0 ? `HP ${x.hp}/${x.max}` : 'หมดสติ' });
+    if (ti === null) return false;
+    const t = S.party[ti];
+    const was = t.hp;
+    t.hp = Math.min(t.max, t.hp + 4);
+    h.focus -= 1;
+    clog(`${name} พอกยาให้ ${esc(t.name)} +${t.hp - was}${was === 0 ? ' ฟื้นแล้ว!' : ''}`, 'good');
+    renderAll(); flash('h' + ti);
+    return true;
+  }
+  if (a === 'sp') {
+    switch (h.cls) {
+      case 'guard':
+        C.taunt = i; h.guard = 2;
+        clog(`${name} ยืนหยัดกลางลาน ศัตรูทุกตัวหันมาที่เขา`, 'good');
+        break;
+      case 'healer': {
+        let woke = 0;
+        S.party.forEach(x => { if (x.hp <= 0) woke++; x.hp = Math.min(x.max, x.hp + 4); });
+        clog(`${name} ต้มยาหม้อใหญ่ ทุกคน +4${woke ? ` ปลุกได้ ${woke} คน` : ''}`, 'good');
+        break;
+      }
+      case 'hunter': {
+        const hits = aliveFoes().map(f => `${hitFoe(C.foes.indexOf(f), 3)}`);
+        clog(`${name} ยิงฝนธนูใส่ศัตรูทุกตัว (${hits.join(', ')})`, 'good');
+        break;
+      }
+      case 'boxer': {
+        const fi = await pickFoe(`${name} จะเข่าลอยใส่ตัวไหน`);
+        if (fi === null) return false;
+        const d = hitFoe(fi, 9);
+        clog(`${name} เข่าลอยใส่${esc(C.foes[fi].name)} −${d}!`, 'good');
+        flash('f' + fi);
+        break;
+      }
+      case 'monk': {
+        const fi = await pickFoe(`${name} จะร่ายคาถาใส่ตัวไหน`);
+        if (fi === null) return false;
+        const d = hitFoe(fi, 4, { holy: true });
+        C.foes[fi].stun = true;
+        clog(`${name} ร่ายคาถามัด${esc(C.foes[fi].name)} −${d} และขยับไม่ได้`, 'good');
+        break;
+      }
+      case 'thief': {
+        const fi = await pickFoe(`${name} จะแทงตัวไหน`);
+        if (fi === null) return false;
+        const d = hitFoe(fi, 7, { pierce: true });
+        let loot = '';
+        if (Math.random() < 0.5) { const k = pickRandom(['herb', 'bomb']); S.items[k]++; loot = ` และล้วง${ITEMS[k].name}มาได้`; }
+        clog(`${name} มีดเงาแทง${esc(C.foes[fi].name)} −${d}${loot}`, 'good');
+        flash('f' + fi);
+        break;
+      }
+    }
+    h.focus -= 2;
+    renderAll();
+    return true;
+  }
+  if (a === 'item') {
+    const k = await ask({
+      title: `${name} จะใช้อะไร`,
+      buttons: Object.keys(ITEMS).map(k => ({ value: k, html: `${ITEMS[k].em} ${ITEMS[k].name} ×${S.items[k]}`, sub: ITEMS[k].desc, disabled: !S.items[k] })).concat([{ value: null, label: 'ย้อนกลับ', cls: 'ghost' }]),
+    });
+    if (!k) return false;
+    if (k === 'herb') {
+      const ti = await pickHero({ title: 'ให้ยาสมุนไพรกับใคร', downed: true, back: true, sub: x => x.hp > 0 ? `HP ${x.hp}/${x.max}` : 'หมดสติ' });
+      if (ti === null) return false;
+      const t = S.party[ti];
+      const was = t.hp;
+      t.hp = Math.min(t.max, t.hp + 5);
+      clog(`${name} ป้อนยาสมุนไพรให้ ${esc(t.name)} +${t.hp - was}${was === 0 ? ' ฟื้นแล้ว!' : ''}`, 'good');
+      flash('h' + ti);
+    } else if (k === 'holy') {
+      const hits = aliveFoes().map(f => hitFoe(C.foes.indexOf(f), f.spirit ? 6 : 2, { holy: true }));
+      clog(`${name} สาดน้ำมนต์ไปทั่ว (${hits.join(', ')})`, 'good');
+    } else {
+      const hits = aliveFoes().map(f => hitFoe(C.foes.indexOf(f), 3));
+      clog(`${name} จุดประทัดยักษ์ ตูม! (${hits.join(', ')})`, 'good');
+    }
+    S.items[k]--;
+    renderAll();
+    return true;
+  }
+  return false;
+}
+
+function pickTargetHero() {
+  if (C.taunt >= 0 && S.party[C.taunt].hp > 0) return C.taunt;
+  const list = S.party.map((h, i) => i).filter(i => S.party[i].hp > 0);
+  return list.length ? pickRandom(list) : -1;
+}
+
+async function foeTurn(f) {
+  const name = esc(f.name);
+  if (f.stun) { f.stun = false; clog(`${name} ยังมึนงง ขยับไม่ได้`); return; }
+  const N = S.party.length;
+  if (f.moves && C.round % 3 === 0) {
+    const mv = f.moves[(C.round / 3 - 1) % f.moves.length];
+    if (mv === 'tail') {
+      standing().forEach(h => hurtHero(S.party.indexOf(h), 2));
+      clog(`${name} ฟาดหางกวาดทั้งลาน! ทุกคนโดน 2`, 'bad');
+    } else if (mv === 'drain') {
+      let got = 0;
+      standing().forEach(h => { got += hurtHero(S.party.indexOf(h), 2); });
+      const healed = Math.min(f.max - f.hp, Math.ceil(got / 2));
+      f.hp += healed;
+      clog(`${name} ดูดพลังชีวิตทุกคน แล้วฟื้นตัวเอง +${healed}`, 'bad');
+    } else if (mv === 'summon') {
+      const n = N >= 5 ? 2 : 1;
+      for (let k = 0; k < n; k++) C.foes.push(makeFoe('wisp', N));
+      clog(`${name} เรียกผีโขมดออกมาช่วย ${n} ตัว`, 'bad');
+    } else if (mv === 'curse') {
+      standing().forEach(h => hurtHero(S.party.indexOf(h), 3));
+      clog(`${name} ปล่อยอาคมดำแผ่ไปทั่ว ทุกคนโดน 3`, 'bad');
+    }
+    S.party.forEach((h, hi) => flash('h' + hi));
+    return;
+  }
+  const times = f.multi + (f.boss ? Math.floor((N - 2) / 2) : 0); // bosses swing more often at bigger tables
+  for (let t = 0; t < times; t++) {
+    const hi = pickTargetHero();
+    if (hi < 0) return;
+    const r = d6();
+    const d = hurtHero(hi, f.atk + (r === 6 ? 2 : 0));
+    const h = S.party[hi];
+    clog(`${name}${f.verb} ${esc(h.name)} −${d}${r === 6 ? ' แรงพิเศษ!' : ''}${h.hp === 0 ? ' หมดสติ!' : ''}`, 'bad');
+    renderAll();
+    flash('h' + hi);
+    if (t < times - 1) await sleep(REDUCED ? 80 : 300);
+  }
+}
+
+/* =====================================================================
+   Screens
+   ===================================================================== */
+let wakeLock = null;
+async function requestWake() {
+  try {
+    if ('wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S && !$('#game').hidden) requestWake();
+});
+
+function enterGame() {
+  C = null;
+  $('#setup').hidden = true;
+  $('#game').hidden = false;
+  window.scrollTo(0, 0);
+  requestWake();
+}
+function startGame(seats) {
+  FLOW.gen++;
+  pendingResolve = null;
+  S = newGame(seats);
+  enterGame();
+  runGame();
+}
+function resumeGame(saved) {
+  FLOW.gen++;
+  pendingResolve = null;
+  S = saved;
+  S.party.forEach(h => { delete h.focus; delete h.def; delete h.guard; delete h.wasDown; });
+  enterGame();
+  runGame();
+}
+function showSetup() {
+  FLOW.gen++;
+  pendingResolve = null;
+  uiTargets = new Map();
+  C = null;
+  $('#game').hidden = true;
+  $('#setup').hidden = false;
+  const s = loadSave();
+  $('#resume').hidden = !s;
+  if (s) {
+    const ch = CHAPTERS[s.ch];
+    $('#resumeInfo').textContent = `${ch.eyebrow} · ${ch.where} · ${s.party.map(h => h.name).join(', ')}`;
+  }
+  const found = foundEndings();
+  $('#found').innerHTML = `ตอนจบที่ค้นพบ <b>${found.length}/${ENDING_ORDER.length}</b>${found.length ? ` · ${found.map(id => ENDINGS[id].title).join(' · ')}` : ''}`;
+  window.scrollTo(0, 0);
+}
+
+let setupCount = 4;
+let seats = CLASS_ORDER.map((cls, i) => ({ name: '', cls }));
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(KEY_PREFS) || 'null');
+    if (p && [3, 4, 5, 6].includes(p.count)) setupCount = p.count;
+    if (p && Array.isArray(p.seats) && p.seats.length === 6 && p.seats.every(s => CLASSES[s.cls]) && new Set(p.seats.map(s => s.cls)).size === 6) {
+      seats = p.seats.map(s => ({ name: String(s.name || '').slice(0, 12), cls: s.cls }));
+    }
+  } catch (e) { /* ignore */ }
+}
+function savePrefs() { try { localStorage.setItem(KEY_PREFS, JSON.stringify({ count: setupCount, seats })); } catch (e) { /* ignore */ } }
+function renderSeats() {
+  $('#seats').innerHTML = seats.slice(0, setupCount).map((s, i) => `
+    <div class="seat">
+      <span class="s-em" aria-hidden="true">${CLASSES[s.cls].em}</span>
+      <label class="sr" for="name-${i}">ชื่อผู้เล่นคนที่ ${i + 1}</label>
+      <input id="name-${i}" maxlength="12" autocomplete="off" value="${esc(s.name)}" placeholder="ผู้เล่น ${i + 1}">
+      <label class="sr" for="cls-${i}">ฮีโร่ของผู้เล่นคนที่ ${i + 1}</label>
+      <select id="cls-${i}">${CLASS_ORDER.map(k => `<option value="${k}"${k === s.cls ? ' selected' : ''}>${CLASSES[k].em} ${CLASSES[k].name}</option>`).join('')}</select>
+    </div>`).join('');
+}
+function initSetup() {
+  loadPrefs();
+  const seg = $('#countSeg');
+  seg.innerHTML = [3, 4, 5, 6].map(v => `<button type="button" role="radio" aria-checked="${v === setupCount}" data-v="${v}">${v}</button>`).join('');
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+    setupCount = +b.dataset.v;
+    renderSeats();
+  });
+  renderSeats();
+  $('#seats').addEventListener('input', e => {
+    const m = /^name-(\d)$/.exec(e.target.id || '');
+    if (m) seats[+m[1]].name = e.target.value;
+  });
+  $('#seats').addEventListener('change', e => {
+    const m = /^cls-(\d)$/.exec(e.target.id || '');
+    if (!m) return;
+    const i = +m[1];
+    const want = e.target.value;
+    const j = seats.findIndex((s, k) => k !== i && s.cls === want);
+    if (j >= 0) seats[j].cls = seats[i].cls;
+    seats[i].cls = want;
+    renderSeats();
+  });
+  $('#startBtn').addEventListener('click', () => {
+    const chosen = seats.slice(0, setupCount).map((s, i) => ({ name: (s.name.trim() || `ผู้เล่น ${i + 1}`).slice(0, 12), cls: s.cls }));
+    savePrefs();
+    startGame(chosen);
+  });
+  $('#resumeBtn').addEventListener('click', () => { const s = loadSave(); if (s) resumeGame(s); else showSetup(); });
+  $('#classList').innerHTML = CLASS_ORDER.map(k => { const c = CLASSES[k]; return `<li><span class="c-em" aria-hidden="true">${c.em}</span><span><b>${c.name}</b> · HP ${c.hp} · แรง ${c.atk} · พลัง ${c.pow} ไหวพริบ ${c.wit} จิต ${c.spi}<small>${c.sp.name}: ${c.sp.desc}${c.extra ? ` · ${c.extra.name}: ${c.extra.desc}` : ''}</small></span></li>`; }).join('');
+  $('#itemList').innerHTML = Object.keys(ITEMS).map(k => `<li><span class="c-em" aria-hidden="true">${ITEMS[k].em}</span><span><b>${ITEMS[k].name}</b><small>${ITEMS[k].desc}</small></span></li>`).join('');
+}
+
+function openSheet(id) { const el = $(id); el.hidden = false; const b = el.querySelector('button'); if (b) b.focus({ preventScroll: true }); }
+function closeSheets() { document.querySelectorAll('.overlay').forEach(o => { o.hidden = true; }); }
+function bindChrome() {
+  $('#howBtn').addEventListener('click', () => openSheet('#how'));
+  $('#howBtn2').addEventListener('click', () => openSheet('#how'));
+  $('#exitBtn').addEventListener('click', () => openSheet('#confirm'));
+  $('#confirmExit').addEventListener('click', () => { closeSheets(); showSetup(); });
+  document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
+    if (e.target === o || e.target.closest('[data-close]')) closeSheets();
+  }));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheets(); });
+}
+
+function boot(data) {
+  initSetup();
+  bindChrome();
+  const g = data && data.game;
+  if (g && g.v === 1 && !g.done) resumeGame(g);
+  else showSetup();
+}
+if (window.claude?.hot?.ready) window.claude.hot.ready(boot);
+else boot(window.claude?.hot?.data ?? {});
+</script>
+</body>
+</html>

@@ -1,0 +1,1205 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>เจ้าสัวตลาดน้ำ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#0a2c2f">
+<meta name="description" content="บอร์ดเกมพายเรือค้าขายในตลาดน้ำ สำหรับ 3–6 คน เล่นด้วยมือถือเครื่องเดียว">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai+Looped:wght@400;500;600&family=Itim&display=swap">
+<style>
+/* Layout: one-column phone "table" — a square canal board (a ring of 20 stops with today's orders floating in the middle), then the turn panel, the fleet and the trade log. Deliberately one look: a canal at dusk. */
+:root{
+  --water:#0f4245;
+  --water-deep:#0a2c2f;
+  --water-hi:#1c5f62;
+  --deck:#0d3538;
+  --line:#2a6e70;
+  --row:#123d40;
+  --plank:#ecd5a6;
+  --plank-2:#d9b57a;
+  --teak:#8f5a2c;
+  --ink:#2b1b0e;
+  --bone:#fbf5e6;
+  --bone-edge:#d9c9a5;
+  --mist:#e7f2ee;
+  --mist-dim:#a3c4be;
+  --marigold:#ff9f1c;
+  --marigold-wash:#3a3a20;
+  --lacquer:#b3312b;
+  --gold:#f2c94c;
+  --slip:#f8e9c9;
+  --slip-ink:#7a1f16;
+  --scrim:rgba(5,22,24,.76);
+  --mango:#f7c948; --lotus:#ec6f9e; --silk:#8e5bd6; --chili:#d93a2b;
+  --font-display:"Itim","Mali","Mitr",ui-rounded,system-ui,sans-serif;
+  --font-body:"IBM Plex Sans Thai Looped","IBM Plex Sans Thai","Sarabun","Noto Sans Thai",system-ui,sans-serif;
+  color-scheme:dark;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{min-height:100%}
+body{
+  margin:0;
+  background:radial-gradient(140% 60% at 50% -8%, var(--water-hi) 0%, transparent 58%) no-repeat, var(--water-deep);
+  color:var(--mist);
+  font-family:var(--font-body);
+  font-size:15px;
+  line-height:1.55;
+  -webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
+}
+button{font:inherit;color:inherit;touch-action:manipulation}
+.app{
+  max-width:560px;
+  margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:14px 44px;
+}
+.ico{display:inline-block;width:1em;height:1em;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- Setup ---------- */
+.hero{display:grid;justify-items:center;text-align:center;gap:4px;padding-block:6px 14px}
+.hero .scene{width:min(280px,78%);height:auto}
+.hero h1{
+  font-family:var(--font-display);font-weight:400;
+  font-size:clamp(42px,13vw,60px);line-height:1.02;margin:0;
+  color:var(--gold);text-shadow:0 3px 0 var(--teak);text-wrap:balance;
+}
+.hero p{margin:0;color:var(--mist-dim);max-width:34ch;text-wrap:balance}
+.stack{display:grid;gap:14px}
+.card{background:var(--deck);border:1px solid var(--line);border-radius:18px;padding:16px;display:grid;gap:12px}
+.card h2{font-family:var(--font-display);font-weight:400;font-size:18px;margin:0;line-height:1.2}
+.card .hint{margin:-6px 0 0;font-size:13px;color:var(--mist-dim)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--water-deep);padding:4px;border-radius:12px}
+.seg button{
+  border:0;background:transparent;border-radius:9px;min-height:46px;padding:4px;
+  font-family:var(--font-display);font-size:19px;line-height:1.1;color:var(--mist-dim);
+  cursor:pointer;display:grid;place-items:center;
+}
+.seg button small{font-family:var(--font-body);font-size:11.5px}
+.seg button[aria-checked="true"]{background:var(--plank);color:var(--ink)}
+.seg button:focus-visible{outline:3px solid var(--mist);outline-offset:1px}
+.names{display:grid;gap:8px}
+.namerow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px}
+.namerow input{
+  width:100%;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;
+  border:1px solid var(--line);background:var(--water-deep);color:var(--mist);
+}
+.namerow input::placeholder{color:var(--mist-dim);opacity:.7}
+.namerow input:focus{outline:2px solid var(--marigold);outline-offset:1px}
+.resume{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;border-color:var(--marigold)}
+.resume b{font-family:var(--font-display);font-weight:400;font-size:18px;display:block;line-height:1.2}
+.resume span{font-size:13px;color:var(--mist-dim)}
+
+/* ---------- Buttons ---------- */
+.btn{
+  appearance:none;-webkit-appearance:none;border:0;border-radius:12px;
+  padding:9px 12px;min-height:50px;background:var(--water-hi);color:var(--mist);
+  font-family:var(--font-display);font-size:17px;line-height:1.2;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.25);
+}
+.btn small{font-family:var(--font-body);font-size:12px;line-height:1.35;opacity:.85}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.primary{background:var(--marigold);color:var(--ink)}
+.btn.big{min-height:58px;font-size:22px}
+.btn.ghost{background:transparent;border:1px solid var(--line);box-shadow:none;color:var(--mist-dim);min-height:44px;font-size:15px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn:focus-visible{outline:3px solid var(--mist);outline-offset:2px}
+.btn .row{display:flex;align-items:center;gap:8px}
+.btn .row .ico{width:28px;height:28px}
+
+/* ---------- Game chrome ---------- */
+.topbar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.brand{font-family:var(--font-display);font-size:21px;color:var(--gold);margin-right:auto;white-space:nowrap;line-height:1.1}
+.tbtn{border:1px solid var(--line);background:transparent;border-radius:10px;padding:5px 12px;min-height:38px;cursor:pointer;font-size:14px;color:var(--mist-dim)}
+.tbtn:focus-visible{outline:3px solid var(--mist);outline-offset:2px}
+.chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-body);font-size:12px;line-height:1.4;padding:1px 8px;border-radius:999px;background:var(--water-hi);color:var(--mist);white-space:nowrap}
+.chip.warn{background:var(--lacquer)}
+.chip.gold{background:var(--gold);color:var(--ink)}
+
+/* ---------- Board ---------- */
+.board{
+  container-type:inline-size;position:relative;
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(6,minmax(0,1fr));
+  gap:3px;padding:5px;width:100%;max-width:100%;aspect-ratio:1/1;border-radius:16px;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 9px, rgba(231,242,238,.045) 9px 10px),
+    var(--water);
+  box-shadow:inset 0 0 0 2px var(--teak), 0 12px 30px rgba(0,0,0,.35);
+}
+.cell{
+  position:relative;appearance:none;-webkit-appearance:none;border:0;margin:0;
+  padding:7% 1px 0;border-radius:7px;background:var(--plank);color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;
+  overflow:hidden;min-width:0;min-height:0;
+  box-shadow:inset 0 -3px 0 rgba(43,27,14,.22);
+}
+.cell .ico{width:44%;height:auto;aspect-ratio:1/1}
+.cell .lbl{font-family:var(--font-display);font-size:clamp(9px,2.8cqw,13px);line-height:1.1;white-space:nowrap}
+.cell.t-market{box-shadow:inset 0 4px 0 var(--good), inset 0 -3px 0 rgba(43,27,14,.22)}
+.cell.t-dock{background:var(--plank-2)}
+.cell.t-fortune{background:var(--lacquer);color:var(--gold)}
+.cell.t-home,.cell.t-grand{background:var(--teak);color:var(--plank)}
+.cell.t-temple{background:var(--gold);color:var(--ink)}
+.cell.t-barter{background:repeating-linear-gradient(135deg,var(--plank) 0 6px,var(--plank-2) 6px 12px)}
+.cell .boats{position:absolute;left:1px;right:1px;bottom:2px;display:flex;flex-wrap:wrap-reverse;justify-content:center;gap:0 1px;pointer-events:none}
+.cell .boat{width:31%;height:auto}
+.cell .boat.me{filter:drop-shadow(0 0 1.5px var(--bone)) drop-shadow(0 0 1px var(--bone));animation:bob 1.6s ease-in-out infinite}
+.cell.target{outline:3px solid var(--marigold);outline-offset:-2px;z-index:2;animation:beckon .85s ease-in-out infinite alternate}
+.cell:focus-visible{outline:3px solid var(--mist);outline-offset:-2px;z-index:3}
+@keyframes beckon{from{transform:scale(1)}to{transform:scale(1.07)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+
+.center{grid-area:2 / 2 / 6 / 6;display:flex;flex-direction:column;gap:1.5cqw;padding:1.4cqw 1cqw;min-width:0;min-height:0}
+.c-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-family:var(--font-display);font-size:clamp(11px,3.6cqw,16px);color:var(--plank);line-height:1.2}
+.c-head .flow{font-size:.85em;color:var(--mist-dim)}
+.order{
+  flex:1 1 0;min-height:0;position:relative;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto 1fr;column-gap:2cqw;align-items:center;
+  background:var(--plank);color:var(--ink);border-radius:8px;padding:1.1cqw 2.2cqw;
+  box-shadow:0 .8cqw 0 var(--teak);
+}
+.o-name{font-family:var(--font-display);font-size:clamp(10px,3.3cqw,15px);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:1.4cqw}
+.o-name .tag{font-family:var(--font-body);font-size:clamp(8px,2.3cqw,11px);background:var(--marigold);color:var(--ink);border-radius:999px;padding:0 1.6cqw;line-height:1.5;flex:none}
+.o-need{display:flex;flex-wrap:wrap;gap:0 1.8cqw;align-self:start}
+.need-i{display:inline-flex;align-items:center;font-weight:600;font-size:clamp(10px,3cqw,14px);font-variant-numeric:tabular-nums}
+.need-i .ico{width:clamp(16px,5.6cqw,26px);height:auto;aspect-ratio:1/1}
+.o-val{grid-column:2;grid-row:1 / 3;display:flex;flex-direction:column;align-items:center;font-family:var(--font-display);font-size:clamp(14px,4.8cqw,22px);line-height:1}
+.o-val .ico{width:clamp(18px,6.4cqw,30px);height:auto;aspect-ratio:1/1}
+.order.ready{outline:2px solid var(--marigold);outline-offset:1px}
+
+.cellinfo{min-height:3em;font-size:13px;color:var(--mist-dim);padding:7px 2px 2px;line-height:1.45}
+.cellinfo b{color:var(--mist);font-weight:600}
+
+/* ---------- Turn panel ---------- */
+.panel{background:var(--deck);border:1px solid var(--line);border-radius:18px;padding:14px;display:grid;gap:12px}
+.turnhead{display:flex;align-items:center;gap:12px}
+.turnhead .boat-lg{width:54px;height:auto;flex:none}
+.th-name{font-family:var(--font-display);font-size:23px;line-height:1.1}
+.th-sub{font-size:13px;color:var(--mist-dim);display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center}
+.th-sub .ico{width:16px;height:16px;vertical-align:-3px}
+.ask{display:grid;gap:10px}
+.ask-title{font-family:var(--font-display);font-size:20px;color:var(--gold);line-height:1.25;text-wrap:balance}
+.ask-text{margin:2px 0 0;color:var(--mist-dim);font-size:14px}
+.ask-text .hot{color:var(--marigold);font-weight:600}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}
+.choices .wide,.choices .ghost{grid-column:1 / -1}
+.btn.order-btn{flex-direction:row;justify-content:space-between;text-align:left;gap:10px}
+.order-btn .ob-l{display:grid;gap:3px;min-width:0}
+.order-btn .ob-l .o-need{gap:0 10px}
+.order-btn .need-i{font-family:var(--font-body);font-size:13px}
+.order-btn .need-i .ico{width:22px}
+.order-btn .ob-r{font-size:14px;white-space:nowrap;display:flex;align-items:center;gap:4px;font-family:var(--font-display)}
+.order-btn .ob-r .ico{width:22px;height:22px}
+.dice{display:flex;justify-content:center;gap:14px;padding:4px 0}
+.die{display:inline-grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:60px;height:60px;padding:10px;gap:3px;background:var(--bone);border-radius:14px;box-shadow:inset 0 -4px 0 var(--bone-edge),0 4px 10px rgba(0,0,0,.3)}
+.die i{border-radius:50%}
+.die i.on{background:var(--ink)}
+.die.red i.on{background:var(--lacquer)}
+.dice.small .die{width:40px;height:40px;padding:7px;gap:2px;border-radius:10px}
+.dice.rolling .die{animation:tumble .16s linear infinite}
+@keyframes tumble{0%{transform:rotate(-9deg)}50%{transform:rotate(9deg) translateY(-3px)}100%{transform:rotate(-9deg)}}
+.notes{margin:0;padding-left:1.2em;display:grid;gap:3px;font-size:14px}
+.slip{background:var(--slip);color:var(--slip-ink);border-radius:8px;padding:14px 16px;text-align:center;border:2px solid var(--lacquer);box-shadow:0 0 0 4px var(--slip)}
+.slip-no{font-size:12px;letter-spacing:.08em}
+.slip-title{font-family:var(--font-display);font-size:25px;line-height:1.2}
+.slip p{margin:4px 0 0;color:var(--ink)}
+.hold{display:grid;gap:7px;border-top:1px dashed var(--line);padding-top:11px}
+.hold-label{font-size:13px;color:var(--mist-dim);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.hold-label b{color:var(--mist);font-variant-numeric:tabular-nums}
+.slots{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;max-width:340px}
+.slot{aspect-ratio:1/1;max-width:100%;border-radius:10px;border:1.5px dashed var(--line);display:grid;place-items:center}
+.slot.full{border-style:solid;background:var(--water-deep)}
+.slot.over{border-color:var(--lacquer);border-style:solid}
+.slot .ico{width:72%;height:72%}
+.results{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.results li{display:grid;grid-template-columns:2em auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--row)}
+.results li.win{background:var(--gold);color:var(--ink)}
+.results .rk{font-family:var(--font-display);font-size:22px;text-align:center;line-height:1}
+.results .nm{font-family:var(--font-display);font-size:18px;line-height:1.2;min-width:0}
+.results .nm small{display:block;font-family:var(--font-body);font-size:12px;opacity:.8}
+.results .cn{font-family:var(--font-display);font-size:22px;display:flex;align-items:center;gap:4px}
+.results .cn .ico{width:22px;height:22px}
+.results .boat-md{width:40px}
+
+/* ---------- Fleet & log ---------- */
+.section-h{font-family:var(--font-display);font-weight:400;font-size:16px;color:var(--mist-dim);margin:18px 0 8px;line-height:1.2}
+.fleet{display:grid;gap:8px}
+.prow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border-radius:14px;background:var(--row)}
+.prow.now{background:var(--marigold-wash);box-shadow:inset 0 0 0 1.5px var(--marigold)}
+.boat-md{width:42px;height:auto;flex:none}
+.boat-sm{width:30px;height:auto;flex:none}
+.pmain{min-width:0;display:grid;gap:2px}
+.pname{font-family:var(--font-display);font-size:17px;line-height:1.2;display:flex;gap:6px;align-items:center;flex-wrap:wrap;overflow-wrap:anywhere}
+.pgoods{display:flex;gap:10px;font-size:13px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.pgoods span{display:inline-flex;align-items:center;gap:2px}
+.pgoods .ico{width:18px;height:18px}
+.pgoods .zero{opacity:.35}
+.pcoins{display:grid;justify-items:end;gap:5px}
+.pcoins .amt{display:flex;align-items:center;gap:4px;font-family:var(--font-display);font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
+.pcoins .amt .ico{width:22px;height:22px}
+.bar{width:64px;height:5px;border-radius:3px;background:var(--water-deep);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--gold)}
+.log{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;color:var(--mist-dim)}
+.log li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+.log .r{font-variant-numeric:tabular-nums;color:var(--line);font-weight:600}
+
+/* ---------- Sheets ---------- */
+.overlay{position:fixed;inset:0;z-index:40;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.sheet{
+  width:100%;max-width:560px;max-height:90%;overflow:auto;background:var(--deck);
+  border:1px solid var(--line);border-bottom:0;border-radius:22px 22px 0 0;
+  padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));
+  padding-block:20px calc(18px + env(safe-area-inset-bottom,0px));
+}
+.sheet h2{font-family:var(--font-display);font-weight:400;font-size:26px;color:var(--gold);margin:0 0 4px;line-height:1.2}
+.sheet h3{font-family:var(--font-display);font-weight:400;font-size:19px;margin:16px 0 6px;line-height:1.2}
+.sheet p,.sheet li{max-width:62ch}
+.sheet p{margin:4px 0}
+.sheet ol{padding-left:1.3em;margin:4px 0;display:grid;gap:4px}
+.legend{display:grid;gap:9px;list-style:none;padding:0;margin:6px 0}
+.legend li{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;align-items:center}
+.sw{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;background:var(--plank);color:var(--ink)}
+.sw .ico{width:26px;height:26px}
+.sw.t-dock{background:var(--plank-2)}
+.sw.t-fortune{background:var(--lacquer);color:var(--gold)}
+.sw.t-home,.sw.t-grand{background:var(--teak);color:var(--plank)}
+.sw.t-temple{background:var(--gold)}
+.sw.t-barter{background:repeating-linear-gradient(135deg,var(--plank) 0 5px,var(--plank-2) 5px 10px)}
+.formula{background:var(--row);border-radius:10px;padding:10px 12px;font-size:14px}
+.sheet-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.sheet-actions .btn:only-child{grid-column:1 / -1}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-mango" viewBox="0 0 32 32">
+      <path d="M8.5 19.5c-.6-6.8 5-12.6 11.8-12 4.6.4 6.3 5.3 4.4 10.6-2 5.8-7.7 9.4-12 8.5-2.7-.6-4-3.6-4.2-7.1z" fill="#f7c948"/>
+      <path d="M12.5 22.5c2.6 1.6 6.4.2 8.8-3.4" stroke="#e0951b" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M19.5 7.6c.8-3 3.8-4.4 7.2-3.6-1 3-3.9 4.4-7.2 3.6z" fill="#3f9b4a"/>
+    </symbol>
+    <symbol id="i-lotus" viewBox="0 0 32 32">
+      <path d="M16 4.5c3.4 4.2 4.2 9.6 0 16.5-4.2-6.9-3.4-12.3 0-16.5z" fill="#f59bc0"/>
+      <path d="M5.5 10.5c5.6.2 9.6 4.4 10.5 10.5-6.2-.2-10.3-4.3-10.5-10.5z" fill="#ec6f9e"/>
+      <path d="M26.5 10.5c-5.6.2-9.6 4.4-10.5 10.5 6.2-.2 10.3-4.3 10.5-10.5z" fill="#ec6f9e"/>
+      <path d="M4.5 21.5c3.3 2.9 7.3 4.2 11.5 4.2s8.2-1.3 11.5-4.2c-3.8-.9-7.6-.5-11.5-.5s-7.7-.4-11.5.5z" fill="#3f9b4a"/>
+    </symbol>
+    <symbol id="i-silk" viewBox="0 0 32 32">
+      <path d="M5 9.5h16v14H5z" fill="#8e5bd6"/>
+      <path d="M5 13.5h16M5 19.5h16" stroke="#f2c94c" stroke-width="1.6"/>
+      <ellipse cx="21" cy="16.5" rx="4.5" ry="7" fill="#a97ff0"/>
+      <ellipse cx="21" cy="16.5" rx="1.8" ry="3" fill="#5a3394"/>
+      <path d="M5 23.5l-1.5 4.5 6-2.5z" fill="#8e5bd6"/>
+    </symbol>
+    <symbol id="i-chili" viewBox="0 0 32 32">
+      <path d="M11.5 10.5c-3.6 6.6-1.6 14.6 7.2 17.8 2.6.9 4.6-.4 2.6-2-5.2-3.4-6.6-9.6-4.6-15.2z" fill="#d93a2b"/>
+      <path d="M10.3 11.4c1.6-2.4 4.9-3 7.6-1.7l-.7 1.9c-2.2-.9-4.7-.7-6.9-.2z" fill="#3f9b4a"/>
+      <path d="M14 9.6c-.2-2.4 1-4.6 3.4-5.6" stroke="#3f9b4a" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-dock" viewBox="0 0 32 32">
+      <rect x="7" y="7.5" width="18" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+      <path d="M7 14.5h18M13 7.5v14M19 7.5v14" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M4 25.5h24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M9 25.5v3.5M23 25.5v3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-fortune" viewBox="0 0 32 32">
+      <path d="M12.5 15l-1.8-10.5M15.5 15V3.5M18.5 15l1.6-10M21 15.5l4-8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M9 14.5h14l-2 13h-10z" fill="currentColor"/>
+      <path d="M10.4 19h11.2" stroke="#b3312b" stroke-width="1.4"/>
+    </symbol>
+    <symbol id="i-home" viewBox="0 0 32 32">
+      <path d="M16 3.5L26.5 15h-3.2L16 7.6 8.7 15H5.5z" fill="currentColor"/>
+      <path d="M5.5 15c-1-.2-1.8-1.2-1.8-2.4M26.5 15c1-.2 1.8-1.2 1.8-2.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M9.5 15.5h13V23h-13z" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M14.5 23v-4.5h3V23M10 23v5M22 23v5M16 23v5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+    </symbol>
+    <symbol id="i-barter" viewBox="0 0 32 32">
+      <path d="M6 11h17M18.5 6.5L23 11l-4.5 4.5M26 21H9M13.5 16.5L9 21l4.5 4.5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-anchor" viewBox="0 0 32 32">
+      <circle cx="16" cy="6.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2.2"/>
+      <path d="M16 9v18M10.5 14h11M6 18.5c.6 5.2 4.8 8.5 10 8.5s9.4-3.3 10-8.5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+      <path d="M4 19.5l2-2.5 2.3 2.2M28 19.5l-2-2.5-2.3 2.2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-temple" viewBox="0 0 32 32">
+      <path d="M16 2.5l2.4 5.5h-4.8z" fill="currentColor"/>
+      <path d="M9.5 12.5h13L19.5 8.5h-7z" fill="currentColor"/>
+      <path d="M5 18h22l-4.2-5.2H9.2z" fill="currentColor"/>
+      <path d="M5 18l-1.6-2.2M27 18l1.6-2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M9 18.5h14v9H9z" fill="currentColor" opacity=".85"/>
+      <path d="M14.4 27.5v-5.2a1.6 1.6 0 013.2 0v5.2z" fill="#f2c94c"/>
+    </symbol>
+    <symbol id="i-coin" viewBox="0 0 32 32">
+      <circle cx="16" cy="16" r="13" fill="#f2c94c"/>
+      <circle cx="16" cy="16" r="9.8" fill="none" stroke="#c4951d" stroke-width="1.6"/>
+      <path d="M13.2 10.5v11M13.2 10.5h3.6a2.6 2.6 0 010 5.2h-3.6M13.2 15.7h4.1a2.9 2.9 0 010 5.8h-4.1M15.3 8.4v2.1M15.3 21.5v2.1" stroke="#7a5a00" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<main class="app">
+
+  <!-- ===== Setup ===== -->
+  <section id="setup" class="stack" aria-labelledby="gameTitle">
+    <header class="hero">
+      <svg class="scene" viewBox="0 0 280 120" aria-hidden="true">
+        <path d="M0 98q17-9 35 0t35 0 35 0 35 0 35 0 35 0 35 0 35 0" fill="none" stroke="#1c5f62" stroke-width="3"/>
+        <path d="M10 112q17-9 35 0t35 0 35 0 35 0 35 0 35 0 35 0" fill="none" stroke="#2a6e70" stroke-width="2"/>
+        <path d="M40 34l-6 64" stroke="#d9b57a" stroke-width="3" stroke-linecap="round"/>
+        <path d="M30 92h10l-4 14z" fill="#d9b57a"/>
+        <path d="M44 58l14-16 14 16z" fill="#ecd5a6" stroke="#2b1b0e" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M51 58h14v14H51z" fill="#3d9be5"/>
+        <use href="#i-mango" x="86" y="46" width="30" height="30"/>
+        <use href="#i-lotus" x="112" y="44" width="30" height="30"/>
+        <use href="#i-silk" x="140" y="46" width="30" height="30"/>
+        <use href="#i-chili" x="166" y="46" width="30" height="30"/>
+        <path d="M206 58l14-16 14 16z" fill="#ecd5a6" stroke="#2b1b0e" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M213 58h14v14h-14z" fill="#e5533d"/>
+        <path d="M22 72h236c-12 22-52 30-118 30S34 94 22 72z" fill="#8f5a2c" stroke="#2b1b0e" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M24 73h232" stroke="#ecd5a6" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      <h1 id="gameTitle">เจ้าสัวตลาดน้ำ</h1>
+      <p>บอร์ดเกมพายเรือค้าขาย สำหรับ 3–6 คน · วางมือถือเครื่องเดียวไว้กลางวง แล้วผลัดกันเล่น</p>
+    </header>
+
+    <div id="resume" class="card resume" hidden>
+      <div><b>มีเกมที่พักไว้</b><span id="resumeInfo"></span></div>
+      <button id="resumeBtn" type="button" class="btn primary">เล่นต่อ</button>
+    </div>
+
+    <div class="card">
+      <h2 id="countLabel">จำนวนผู้เล่น</h2>
+      <div id="countSeg" class="seg" role="radiogroup" aria-labelledby="countLabel"></div>
+      <div id="names" class="names"></div>
+      <h2 id="targetLabel">เป้าหมายเหรียญ</h2>
+      <p class="hint">ใครมีเหรียญถึงเป้าก่อน เล่นต่อจนครบรอบแล้วปิดตลาด</p>
+      <div id="targetSeg" class="seg" role="radiogroup" aria-labelledby="targetLabel"></div>
+      <button id="startBtn" type="button" class="btn primary big">ออกเรือ!</button>
+      <button id="rulesBtn" type="button" class="btn ghost">อ่านกติกา (2 นาที)</button>
+    </div>
+  </section>
+
+  <!-- ===== Game ===== -->
+  <section id="game" hidden>
+    <div class="topbar">
+      <div class="brand">เจ้าสัวตลาดน้ำ</div>
+      <button id="rulesBtn2" type="button" class="tbtn">กติกา</button>
+      <button id="exitBtn" type="button" class="tbtn">พักเกม</button>
+    </div>
+    <div id="board" class="board" aria-label="กระดานคลอง 20 ช่อง"></div>
+    <div id="cellInfo" class="cellinfo" aria-live="polite">แตะช่องบนกระดานเพื่อดูว่าช่องนั้นทำอะไร</div>
+    <div class="panel">
+      <div id="turnhead" class="turnhead"></div>
+      <div id="panelBody" aria-live="polite"></div>
+      <div id="hold" class="hold"></div>
+    </div>
+    <h2 class="section-h">กองเรือ</h2>
+    <div id="players" class="fleet"></div>
+    <h2 class="section-h">บันทึกการค้า</h2>
+    <ul id="log" class="log"></ul>
+  </section>
+</main>
+
+<!-- ===== Rules sheet ===== -->
+<div id="rules" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+    <h2 id="rulesTitle">กติกาเจ้าสัวตลาดน้ำ</h2>
+    <p>พายเรือรับสินค้าจากตลาด แล้วไปส่งออเดอร์ที่ท่าเรือเพื่อรับเหรียญ เมื่อมีคนเหรียญถึงเป้า เกมเล่นต่อจนครบรอบ (ทุกคนได้เล่นเท่ากัน) แล้วคนที่มีเหรียญมากที่สุดเป็นเจ้าสัว ถ้าเสมอ ดูว่าใครเหลือสินค้าในเรือมากกว่า</p>
+
+    <h3>ในตาของคุณ</h3>
+    <ol>
+      <li>ทอยลูกเต๋า 1 ลูก หรือ<b>จ้างฝีพาย</b>: จ่ายสินค้า 1 ชิ้น เพื่อทอย 2 ลูกแล้วเลือกใช้ลูกเดียว</li>
+      <li>เลือกพาย<b>ตามน้ำ ↻</b> หรือ<b>ทวนน้ำ ↺</b> ตามจำนวนแต้ม</li>
+      <li>ถ้าไปจอดช่องที่มีเรือคนอื่น = <b>ชนเรือ!</b> แย่งสินค้าจากเรือลำนั้นได้ 1 ชิ้น (ยกเว้นที่ท่าบ้าน)</li>
+      <li>ทำตามช่องที่จอด แล้วส่งมือถือให้คนถัดไป</li>
+    </ol>
+
+    <h3>ช่องบนกระดาน</h3>
+    <ul class="legend">
+      <li><span class="sw"><svg class="ico"><use href="#i-mango"/></svg></span><span><b>ตลาด</b> มะม่วง ดอกบัว ผ้าไหม พริก: รับสินค้าชนิดนั้น 2 ชิ้น</span></li>
+      <li><span class="sw t-dock"><svg class="ico"><use href="#i-dock"/></svg></span><span><b>ท่าส่ง</b>: ส่งออเดอร์ที่มีของครบ ส่งได้หลายใบในครั้งเดียว</span></li>
+      <li><span class="sw t-grand"><svg class="ico"><use href="#i-anchor"/></svg></span><span><b>ท่าใหญ่</b> (มุมซ้ายบน): เหมือนท่าส่ง แต่ได้โบนัส +1 เหรียญต่อใบ</span></li>
+      <li><span class="sw t-fortune"><svg class="ico"><use href="#i-fortune"/></svg></span><span><b>เซียมซี</b>: เสี่ยงทาย จั่วการ์ดโชคชะตา มีทั้งดีและร้าย</span></li>
+      <li><span class="sw t-home"><svg class="ico"><use href="#i-home"/></svg></span><span><b>ท่าบ้าน</b> (มุมขวาล่าง): เลือกรับสินค้าอะไรก็ได้ 2 ชิ้น และไม่มีใครชนเรือได้</span></li>
+      <li><span class="sw t-barter"><svg class="ico"><use href="#i-barter"/></svg></span><span><b>ตลาดแลก</b> (มุมซ้ายล่าง): แลกสินค้า 1 ต่อ 1 ได้สูงสุด 2 ชิ้น</span></li>
+      <li><span class="sw t-temple"><svg class="ico"><use href="#i-temple"/></svg></span><span><b>วัด</b> (มุมขวาบน): ทำบุญสินค้า 1 ชิ้น รับ 1 เหรียญ</span></li>
+    </ul>
+
+    <h3>ออเดอร์</h3>
+    <p class="formula">ค่าตอบแทน = จำนวนสินค้า + จำนวนชนิดที่ต่างกัน − 1<br>เช่น พริก 2 + มะม่วง 1 = 3 ชิ้น 2 ชนิด → ได้ 4 เหรียญ</p>
+    <p>ออเดอร์ที่คุณมีของครบจะขึ้นป้าย <b>ของครบ</b> บนกระดาน เรือบรรทุกได้ 6 ชิ้น ถ้าเกินต้องเลือกทิ้ง</p>
+
+    <div class="sheet-actions"><button type="button" class="btn primary" data-close>เข้าใจแล้ว</button></div>
+  </div>
+</div>
+
+<!-- ===== Pause confirm ===== -->
+<div id="confirm" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle">พักเกมไว้ก่อน?</h2>
+    <p>เกมถูกบันทึกไว้ในมือถือเครื่องนี้ กลับมากด "เล่นต่อ" ได้ ตาที่กำลังเล่นอยู่จะเริ่มใหม่ตั้งแต่ต้นตา</p>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-close>เล่นต่อ</button>
+      <button id="confirmExit" type="button" class="btn primary">พักเกม</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+document.documentElement.lang = 'th';
+
+/* ================= Data ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const REDUCED = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const KEY_SAVE = 'jaosua-talatnam-save-v1';
+const KEY_PREFS = 'jaosua-talatnam-prefs-v1';
+const CAP = 6;
+const GOOD_KEYS = ['mango', 'lotus', 'silk', 'chili'];
+const GOODS = { mango: 'มะม่วง', lotus: 'ดอกบัว', silk: 'ผ้าไหม', chili: 'พริก' };
+const COLORS = ['#e5533d', '#3d9be5', '#f2c230', '#45b36b', '#f4efe4', '#a46be0'];
+
+// 20 stops around the canal. Index grows "ตามน้ำ" (clockwise on screen).
+const SPACES = [
+  { type: 'home' },                    // 0  bottom-right corner
+  { type: 'market', good: 'mango' },   // 1
+  { type: 'fortune' },                 // 2
+  { type: 'dock' },                    // 3
+  { type: 'market', good: 'lotus' },   // 4
+  { type: 'barter' },                  // 5  bottom-left corner
+  { type: 'market', good: 'silk' },    // 6
+  { type: 'dock' },                    // 7
+  { type: 'fortune' },                 // 8
+  { type: 'market', good: 'chili' },   // 9
+  { type: 'grand' },                   // 10 top-left corner
+  { type: 'market', good: 'lotus' },   // 11
+  { type: 'fortune' },                 // 12
+  { type: 'dock' },                    // 13
+  { type: 'market', good: 'mango' },   // 14
+  { type: 'temple' },                  // 15 top-right corner
+  { type: 'market', good: 'chili' },   // 16
+  { type: 'dock' },                    // 17
+  { type: 'fortune' },                 // 18
+  { type: 'market', good: 'silk' },    // 19
+];
+const TYPE_INFO = {
+  home:    { label: 'ท่าบ้าน', icon: 'home',    desc: 'เลือกรับสินค้าอะไรก็ได้ 2 ชิ้น · ท่าปลอดภัย ไม่มีใครชนเรือได้' },
+  dock:    { label: 'ท่าส่ง',  icon: 'dock',    desc: 'ส่งออเดอร์ที่มีของครบ รับเหรียญ' },
+  grand:   { label: 'ท่าใหญ่', icon: 'anchor',  desc: 'ส่งออเดอร์ได้ และได้โบนัส +1 เหรียญต่อใบ' },
+  fortune: { label: 'เซียมซี', icon: 'fortune', desc: 'เสี่ยงเซียมซี จั่วการ์ดโชคชะตา' },
+  barter:  { label: 'ตลาดแลก', icon: 'barter',  desc: 'แลกสินค้า 1 ต่อ 1 ได้สูงสุด 2 ชิ้น' },
+  temple:  { label: 'วัด',     icon: 'temple',  desc: 'ทำบุญสินค้า 1 ชิ้น รับ 1 เหรียญ' },
+};
+
+const ORDERS = [
+  ['ส้มตำป้าแดง',          { chili: 2, mango: 1 }],
+  ['งานบวชหลานชาย',        { lotus: 2, silk: 1 }],
+  ['ร้านข้าวเหนียวมะม่วง', { mango: 3 }],
+  ['ชุดไทยเจ้าสาว',        { silk: 2, lotus: 2 }],
+  ['เรือสำเภาจีน',         { silk: 3 }],
+  ['ต้มยำริมคลอง',         { chili: 3 }],
+  ['แผงตลาดเช้า',          { mango: 1, lotus: 1 }],
+  ['แกงเขียวหวาน',         { chili: 2 }],
+  ['งานวัดประจำปี',        { lotus: 3 }],
+  ['โรงแรมริมน้ำ',         { mango: 1, lotus: 1, silk: 1, chili: 1 }],
+  ['ร้านอาหารฝรั่ง',       { mango: 2, chili: 1, silk: 1 }],
+  ['ร้านพวงมาลัย',         { lotus: 2 }],
+  ['คณะทูตต่างแดน',        { silk: 2, mango: 1 }],
+  ['ห้องเครื่องในวัง',     { chili: 1, mango: 1, lotus: 1 }],
+  ['ของฝากนักท่องเที่ยว',  { silk: 2, chili: 2 }],
+  ['ร้านน้ำพริกแม่ศรี',    { chili: 2, lotus: 1 }],
+  ['ขบวนแห่ลอยกระทง',      { lotus: 2, mango: 2 }],
+  ['แม่ค้าหาบเร่',         { silk: 1, chili: 1 }],
+  ['งานกาชาด',             { mango: 1, silk: 1, lotus: 1 }],
+  ['ภัตตาคารใหญ่',         { chili: 2, mango: 2, silk: 1 }],
+].map(([name, need]) => {
+  const kinds = Object.keys(need);
+  return { name, need, value: kinds.reduce((s, k) => s + need[k], 0) + kinds.length - 1 };
+});
+
+const FORTUNES = [
+  { id: 'wind',      no: 7,  title: 'ลมส่งท้ายเรือ',      text: 'ทอยลูกเต๋าแล้วพายต่ออีกครั้งทันที' },
+  { id: 'regular',   no: 12, title: 'ลูกค้าขาประจำ',      text: 'เลือกรับสินค้าอะไรก็ได้ 1 ชิ้น' },
+  { id: 'mangoes',   no: 3,  title: 'มะม่วงล้นสวน',       text: 'ทุกลำที่เรือยังไม่เต็ม ได้มะม่วงคนละ 1 ชิ้น' },
+  { id: 'krathong',  no: 24, title: 'คืนลอยกระทง',        text: 'คุณได้ดอกบัว 2 ชิ้นไปทำกระทง' },
+  { id: 'storm',     no: 18, title: 'พายุฝนกระหน่ำ',      text: 'ทุกลำที่มีสินค้าเกิน 3 ชิ้น เสียสินค้าแบบสุ่ม 1 ชิ้น' },
+  { id: 'leak',      no: 9,  title: 'เรือรั่ว',           text: 'คุณเสียสินค้าแบบสุ่ม 1 ชิ้น' },
+  { id: 'shortcut',  no: 15, title: 'คลองลัด',            text: 'ย้ายเรือไปท่าส่งของท่าไหนก็ได้ แล้วส่งออเดอร์ได้ทันที' },
+  { id: 'middleman', no: 21, title: 'พ่อค้าคนกลาง',       text: 'แลกสินค้า 1 ชิ้นของคุณ กับสินค้า 1 ชิ้นที่เลือกจากเรือคนอื่น' },
+  { id: 'toll',      no: 5,  title: 'เก็บค่าท่า',         text: 'คนที่มีเหรียญมากที่สุด ต้องจ่ายสินค้าแบบสุ่ม 1 ชิ้นให้คุณ' },
+  { id: 'tourists',  no: 28, title: 'นักท่องเที่ยวแห่มา', text: 'ออเดอร์ถัดไปที่คุณส่ง ได้เพิ่มอีก 2 เหรียญ' },
+  { id: 'lottery',   no: 1,  title: 'ถูกหวยเลขท้าย',      text: 'รับ 2 เหรียญทันที' },
+  { id: 'fickle',    no: 16, title: 'ลูกค้าเปลี่ยนใจ',    text: 'เลือกออเดอร์ 1 ใบทิ้ง แล้วเปิดใบใหม่แทน' },
+];
+
+/* ================= Helpers ================= */
+const mod = i => ((i % 20) + 20) % 20;
+const d6 = () => 1 + Math.floor(Math.random() * 6);
+const pickRandom = a => a[Math.floor(Math.random() * a.length)];
+const total = p => GOOD_KEYS.reduce((s, k) => s + p.goods[k], 0);
+const cur = () => (S ? S.players[S.current] : null);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const icon = (id, cls = '') => `<svg class="ico ${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function boatSVG(color, cls = 'boat') {
+  return `<svg class="${cls}" viewBox="0 0 40 22" aria-hidden="true"><path d="M13 9.5L20 3l7 6.5z" fill="#ecd5a6" stroke="#2b1b0e" stroke-width="1.3" stroke-linejoin="round"/><path d="M1.5 10h37c-2.6 7-8.8 10.5-18.5 10.5S4.1 17 1.5 10z" fill="${color}" stroke="#2b1b0e" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+}
+function cellPos(i) {
+  if (i <= 5) return { r: 6, c: 6 - i };
+  if (i <= 10) return { r: 6 - (i - 5), c: 1 };
+  if (i <= 15) return { r: 1, c: 1 + (i - 10) };
+  return { r: 1 + (i - 15), c: 6 };
+}
+function spaceName(i) { const s = SPACES[i]; return s.type === 'market' ? `ตลาด${GOODS[s.good]}` : TYPE_INFO[s.type].label; }
+function spaceDesc(i) { const s = SPACES[i]; return s.type === 'market' ? `รับ${GOODS[s.good]} 2 ชิ้น` : TYPE_INFO[s.type].desc; }
+function sideName(i) {
+  if (i === 0) return 'มุมขวาล่าง'; if (i < 5) return 'ฝั่งล่าง';
+  if (i === 5) return 'มุมซ้ายล่าง'; if (i < 10) return 'ฝั่งซ้าย';
+  if (i === 10) return 'มุมซ้ายบน'; if (i < 15) return 'ฝั่งบน';
+  if (i === 15) return 'มุมขวาบน'; return 'ฝั่งขวา';
+}
+const canPay = (p, o) => Object.keys(o.need).every(k => p.goods[k] >= o.need[k]);
+const needHTML = need => Object.keys(need).map(k => `<span class="need-i">${icon(k)}×${need[k]}</span>`).join('');
+const PIPS = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
+function dieHTML(v) {
+  return `<span class="die${v === 1 || v === 4 ? ' red' : ''}" role="img" aria-label="ลูกเต๋า ${v}">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => `<i class="${PIPS[v].includes(i) ? 'on' : ''}"></i>`).join('')}</span>`;
+}
+function loseRandom(p) {
+  const pool = GOOD_KEYS.flatMap(k => Array(p.goods[k]).fill(k));
+  if (!pool.length) return null;
+  const k = pickRandom(pool); p.goods[k]--; return k;
+}
+const goodsLine = o => GOOD_KEYS.filter(k => o.goods[k]).map(k => `${GOODS[k]} ${o.goods[k]}`).join(' · ') || 'เรือว่าง';
+
+/* ================= State ================= */
+let S = null;          // live game state
+let snap = null;       // copy of S taken at the start of each turn
+let turnNotes = [];
+let uiTargets = new Map();
+let pendingResolve = null;
+let shownAt = 0;
+const FLOW = { gen: 0 }; // bumping this abandons any in-flight turn
+
+function sleep(ms) { const g = FLOW.gen; return new Promise(r => setTimeout(() => { if (g === FLOW.gen) r(); }, ms)); }
+
+function newGame(names, target) {
+  const players = names.map((name, i) => ({ name, color: COLORS[i], pos: 0, goods: { mango: 0, lotus: 0, silk: 0, chili: 0 }, coins: 0, tourist: 0 }));
+  players.forEach(p => { p.goods[pickRandom(GOOD_KEYS)]++; });
+  const deck = shuffle(ORDERS.map((_, i) => i));
+  return {
+    v: 1, target, players, current: 0, round: 1,
+    orders: deck.splice(0, 3), orderDeck: deck, orderDone: [],
+    fortuneDeck: shuffle(FORTUNES.map((_, i) => i)),
+    lastRound: false, over: false,
+    log: [{ r: 1, t: 'ออกเรือ! ทุกคนได้สินค้าเริ่มต้นคนละ 1 ชิ้น' }],
+  };
+}
+function drawOrder() {
+  if (!S.orderDeck.length) { S.orderDeck = shuffle(S.orderDone); S.orderDone = []; }
+  return S.orderDeck.shift();
+}
+function drawFortune() {
+  if (!S.fortuneDeck.length) S.fortuneDeck = shuffle(FORTUNES.map((_, i) => i));
+  return FORTUNES[S.fortuneDeck.shift()];
+}
+function log(t) {
+  S.log.push({ r: S.round, t });
+  if (S.log.length > 60) S.log.splice(0, S.log.length - 60);
+  turnNotes.push(t);
+}
+function persist() {
+  snap = JSON.parse(JSON.stringify(S));
+  try { localStorage.setItem(KEY_SAVE, JSON.stringify(snap)); } catch (e) { /* storage unavailable */ }
+}
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY_SAVE) || 'null');
+    return s && s.v === 1 && !s.over ? s : null;
+  } catch (e) { return null; }
+}
+function clearSave() { try { localStorage.removeItem(KEY_SAVE); } catch (e) { /* ignore */ } }
+try { window.claude?.hot?.snapshot?.(() => ({ game: snap })); } catch (e) { /* not in a viewer */ }
+
+/* ================= Rendering ================= */
+const boardEl = $('#board');
+const panelBody = $('#panelBody');
+const cellEls = [];
+
+function initBoard() {
+  boardEl.innerHTML = '';
+  cellEls.length = 0;
+  SPACES.forEach((s, i) => {
+    const { r, c } = cellPos(i);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `cell t-${s.type}`;
+    b.style.gridArea = `${r} / ${c}`;
+    if (s.type === 'market') b.style.setProperty('--good', `var(--${s.good})`);
+    const ic = s.type === 'market' ? s.good : TYPE_INFO[s.type].icon;
+    const lbl = s.type === 'market' ? GOODS[s.good] : TYPE_INFO[s.type].label;
+    b.innerHTML = `${icon(ic)}<span class="lbl">${lbl}</span><span class="boats"></span>`;
+    b.setAttribute('aria-label', `${spaceName(i)} ${sideName(i)}: ${spaceDesc(i)}`);
+    b.addEventListener('click', () => onCell(i));
+    boardEl.appendChild(b);
+    cellEls.push(b);
+  });
+  const center = document.createElement('div');
+  center.className = 'center';
+  center.id = 'center';
+  boardEl.appendChild(center);
+}
+
+function onCell(i) {
+  if (uiTargets.has(i) && pendingResolve) {
+    if (performance.now() - shownAt < 250) return;
+    pendingResolve(uiTargets.get(i));
+    return;
+  }
+  const here = S ? S.players.filter(p => p.pos === i).map(p => esc(p.name)) : [];
+  $('#cellInfo').innerHTML = `<b>${esc(spaceName(i))}</b> (${sideName(i)}) · ${esc(spaceDesc(i))}${here.length ? ` · เรือที่จอด: ${here.join(', ')}` : ''}`;
+}
+
+function renderBoard() {
+  if (!S) return;
+  cellEls.forEach((el, i) => {
+    const boats = S.players.map((p, pi) => ({ p, pi })).filter(x => x.p.pos === i);
+    boats.sort((a, b) => (a.pi === S.current) - (b.pi === S.current));
+    el.querySelector('.boats').innerHTML = boats.map(x => boatSVG(x.p.color, 'boat' + (x.pi === S.current && !S.over ? ' me' : ''))).join('');
+    el.classList.toggle('target', uiTargets.has(i));
+  });
+  renderOrders();
+}
+
+function renderOrders() {
+  const p = cur();
+  $('#center').innerHTML = `<div class="c-head"><span>ออเดอร์วันนี้</span><span class="flow">ตามน้ำ ↻</span></div>` +
+    S.orders.map(oi => {
+      const o = ORDERS[oi];
+      const ok = p && !S.over && canPay(p, o);
+      return `<div class="order${ok ? ' ready' : ''}"><div class="o-name"><span>${o.name}</span>${ok ? '<span class="tag">ของครบ</span>' : ''}</div><div class="o-need">${needHTML(o.need)}</div><div class="o-val">${icon('coin')}<span>${o.value}</span></div></div>`;
+    }).join('');
+}
+
+function renderTurnHead() {
+  const p = cur();
+  if (!p) return;
+  if (S.over) {
+    $('#turnhead').innerHTML = `${icon('coin', 'boat-lg')}<div><div class="th-name">ปิดตลาดแล้ว</div><div class="th-sub"><span>เล่นไป ${S.round} รอบ · เป้าหมาย ${S.target} เหรียญ</span></div></div>`;
+    return;
+  }
+  $('#turnhead').innerHTML = `${boatSVG(p.color, 'boat-lg')}<div><div class="th-name">${esc(p.name)}</div><div class="th-sub"><span>รอบที่ ${S.round}</span><span>${icon('coin')} ${p.coins}/${S.target}</span>${p.tourist ? `<span class="chip gold">ออเดอร์ถัดไป +${p.tourist}</span>` : ''}${S.lastRound ? '<span class="chip warn">รอบสุดท้าย</span>' : ''}</div></div>`;
+}
+
+function renderHold() {
+  const p = cur();
+  if (!p || S.over) { $('#hold').hidden = true; return; }
+  $('#hold').hidden = false;
+  const items = GOOD_KEYS.flatMap(k => Array(p.goods[k]).fill(k));
+  const slots = Math.max(CAP, items.length);
+  $('#hold').innerHTML = `<div class="hold-label"><span>ในเรือของ ${esc(p.name)}</span><b>${items.length}/${CAP} ชิ้น</b></div><div class="slots">${Array.from({ length: slots }, (_, i) => `<span class="slot${items[i] ? ' full' : ''}${i >= CAP ? ' over' : ''}">${items[i] ? icon(items[i]) : ''}</span>`).join('')}</div>`;
+}
+
+function renderPlayers() {
+  $('#players').innerHTML = S.players.map((p, i) => {
+    const now = i === S.current && !S.over;
+    const pct = Math.min(100, Math.round((p.coins / S.target) * 100));
+    return `<div class="prow${now ? ' now' : ''}">${boatSVG(p.color, 'boat-md')}<div class="pmain"><div class="pname">${esc(p.name)}${now ? '<span class="chip">กำลังพาย</span>' : ''}${p.tourist ? `<span class="chip gold">+${p.tourist}</span>` : ''}</div><div class="pgoods">${GOOD_KEYS.map(k => `<span class="${p.goods[k] ? '' : 'zero'}" aria-label="${GOODS[k]} ${p.goods[k]}">${icon(k)}${p.goods[k]}</span>`).join('')}</div></div><div class="pcoins"><div class="amt">${icon('coin')}${p.coins}</div><div class="bar" role="img" aria-label="${p.coins} จาก ${S.target} เหรียญ"><i style="width:${pct}%"></i></div></div></div>`;
+  }).join('');
+}
+
+function renderLog() {
+  $('#log').innerHTML = S.log.slice(-6).reverse().map(e => `<li><span class="r">ร.${e.r}</span><span>${esc(e.t)}</span></li>`).join('');
+}
+
+function renderAll() {
+  if (!S) return;
+  renderBoard(); renderTurnHead(); renderHold(); renderPlayers(); renderLog();
+}
+
+/* ================= Prompts ================= */
+function ask({ title, text = '', extra = '', buttons = [], cells = [] }) {
+  const g = FLOW.gen;
+  uiTargets = new Map(cells);
+  return new Promise(resolve => {
+    pendingResolve = value => {
+      if (g !== FLOW.gen) return;
+      pendingResolve = null;
+      uiTargets = new Map();
+      renderBoard();
+      resolve(value);
+    };
+    panelBody.innerHTML = `<div class="ask"><div><div class="ask-title">${esc(title)}</div>${text ? `<p class="ask-text">${text}</p>` : ''}</div>${extra}${buttons.length ? `<div class="choices">${buttons.map((b, i) => `<button type="button" class="btn ${b.cls || ''}${b.primary ? ' primary' : ''}" data-i="${i}"${b.disabled ? ' disabled' : ''}>${b.html ?? esc(b.label)}${b.sub ? `<small>${b.sub}</small>` : ''}</button>`).join('')}</div>` : ''}</div>`;
+    panelBody.querySelectorAll('.choices .btn').forEach(el => el.addEventListener('click', () => {
+      if (!pendingResolve || performance.now() - shownAt < 250) return;
+      pendingResolve(buttons[+el.dataset.i].value);
+    }));
+    shownAt = performance.now();
+    renderBoard();
+  });
+}
+
+function pickGood({ title, text = '', from = null, cancel = null, exclude = null }) {
+  const buttons = GOOD_KEYS.filter(k => k !== exclude).map(k => ({
+    value: k,
+    html: `<span class="row">${icon(k)}<span>${GOODS[k]}</span></span>`,
+    sub: from ? `มี ${from[k]} ชิ้น` : '',
+    disabled: from ? from[k] <= 0 : false,
+  }));
+  if (cancel) buttons.push({ value: null, label: cancel, cls: 'ghost' });
+  return ask({ title, text, buttons });
+}
+
+function pickPlayer({ title, text = '', list, cancel = null }) {
+  const buttons = list.map(o => ({ value: o, cls: 'wide', html: `<span class="row">${boatSVG(o.color, 'boat-sm')}<span>${esc(o.name)}</span></span>`, sub: esc(goodsLine(o)) }));
+  if (cancel) buttons.push({ value: null, label: cancel, cls: 'ghost' });
+  return ask({ title, text, buttons });
+}
+
+async function rollDice(k, title = 'กำลังทอย…') {
+  const res = Array.from({ length: k }, d6);
+  panelBody.innerHTML = `<div class="ask"><div class="ask-title">${esc(title)}</div><div class="dice rolling">${res.map(() => dieHTML(d6())).join('')}</div></div>`;
+  const box = panelBody.querySelector('.dice');
+  const frames = REDUCED ? 0 : 6;
+  for (let f = 0; f < frames; f++) { await sleep(75); box.innerHTML = res.map(() => dieHTML(d6())).join(''); }
+  box.innerHTML = res.map(dieHTML).join('');
+  box.classList.remove('rolling');
+  await sleep(REDUCED ? 150 : 420);
+  return res;
+}
+
+/* ================= Turn flow ================= */
+async function takeTurn() {
+  const p = cur();
+  turnNotes = [];
+  persist();
+  renderAll();
+  let rolls;
+  for (;;) {
+    const c = await ask({
+      title: `ตาของ ${p.name}`,
+      text: S.lastRound ? '<span class="hot">รอบสุดท้าย!</span> ตานี้คือโอกาสสุดท้ายของคุณ' : 'ทอยลูกเต๋า แล้วเลือกพายตามน้ำหรือทวนน้ำ',
+      buttons: [
+        { value: 'roll', label: 'ทอยลูกเต๋า', primary: true },
+        { value: 'hire', label: 'จ้างฝีพาย', sub: 'จ่ายสินค้า 1 ชิ้น · ทอย 2 ลูก เลือกใช้ 1', disabled: total(p) === 0 },
+      ],
+    });
+    if (c === 'roll') { rolls = await rollDice(1); break; }
+    const k = await pickGood({ title: 'จ่ายค่าจ้างฝีพาย', text: 'เลือกสินค้า 1 ชิ้นเป็นค่าแรงฝีพาย', from: p.goods, cancel: 'ยกเลิก' });
+    if (!k) continue;
+    p.goods[k]--;
+    log(`${p.name} จ้างฝีพายด้วย${GOODS[k]} 1 ชิ้น`);
+    renderAll();
+    rolls = await rollDice(2, 'ฝีพายช่วยกันทอย…');
+    break;
+  }
+  await moveBy(p, rolls);
+  await finishTurn();
+}
+
+async function moveBy(p, rolls, title) {
+  const ns = [...new Set(rolls)];
+  const opts = [];
+  ns.forEach(n => {
+    opts.push({ n, dir: 1, cell: mod(p.pos + n) });
+    opts.push({ n, dir: -1, cell: mod(p.pos - n) });
+  });
+  const pick = await ask({
+    title: title || (rolls.length > 1 ? `ได้ ${rolls.join(' กับ ')} เลือกใช้ลูกเดียว` : `ได้ ${rolls[0]} แต้ม`),
+    text: 'แตะช่องที่กระพริบบนกระดาน หรือเลือกด้านล่าง',
+    extra: `<div class="dice small">${rolls.map(dieHTML).join('')}</div>`,
+    buttons: opts.map(o => ({ value: o, html: `<span>${o.dir > 0 ? 'ตามน้ำ ↻' : 'ทวนน้ำ ↺'} ${o.n}</span>`, sub: `ไป${esc(spaceName(o.cell))}` })),
+    cells: opts.map(o => [o.cell, o]),
+  });
+  for (let s = 0; s < pick.n; s++) {
+    p.pos = mod(p.pos + pick.dir);
+    renderBoard();
+    await sleep(REDUCED ? 30 : 170);
+  }
+  log(`${p.name} พาย${pick.dir > 0 ? 'ตามน้ำ' : 'ทวนน้ำ'} ${pick.n} ช่อง ไปจอดที่${spaceName(p.pos)}`);
+  renderAll();
+  await land(p);
+}
+
+async function land(p) {
+  const sp = SPACES[p.pos];
+  if (sp.type !== 'home') {
+    const victims = S.players.filter(o => o !== p && o.pos === p.pos && total(o) > 0);
+    if (victims.length) {
+      const v = victims.length === 1 ? victims[0] : await pickPlayer({ title: 'ชนเรือ!', text: 'มีหลายลำจอดอยู่ เลือกเรือที่จะแย่งของ', list: victims, cancel: 'ไม่แย่ง ปล่อยไป' });
+      if (v) {
+        const k = await pickGood({ title: `ชนเรือ ${v.name}!`, text: `แย่งสินค้า 1 ชิ้นจากเรือของ ${esc(v.name)}`, from: v.goods, cancel: 'ไม่แย่ง ปล่อยไป' });
+        if (k) {
+          v.goods[k]--; p.goods[k]++;
+          log(`${p.name} ชนเรือ ${v.name} แย่ง${GOODS[k]}ไป 1 ชิ้น`);
+          renderAll();
+        }
+      }
+    }
+  }
+  switch (sp.type) {
+    case 'market':
+      p.goods[sp.good] += 2;
+      log(`${p.name} ได้${GOODS[sp.good]} 2 ชิ้น`);
+      renderAll();
+      break;
+    case 'home': {
+      const got = [];
+      for (let i = 1; i <= 2; i++) {
+        const k = await pickGood({ title: 'ท่าบ้าน', text: `เลือกสินค้าที่จะขนขึ้นเรือ ชิ้นที่ ${i} จาก 2` });
+        p.goods[k]++; got.push(GOODS[k]); renderAll();
+      }
+      log(`${p.name} ขน${got.join('กับ')}ขึ้นเรือที่ท่าบ้าน`);
+      break;
+    }
+    case 'dock': await deliver(p, 0); break;
+    case 'grand': await deliver(p, 1); break;
+    case 'temple': await temple(p); break;
+    case 'barter': await barter(p); break;
+    case 'fortune': await fortune(p); break;
+  }
+  await enforceCap(p);
+}
+
+async function deliver(p, bonus) {
+  for (;;) {
+    const affordable = S.orders.some(oi => canPay(p, ORDERS[oi]));
+    if (!affordable) {
+      if (!turnNotes.some(t => t.includes('ส่งออเดอร์'))) log(`${p.name} มาถึงท่า แต่ยังไม่มีของครบสำหรับออเดอร์ไหน`);
+      return;
+    }
+    const buttons = S.orders.map((oi, slot) => {
+      const o = ORDERS[oi];
+      const val = o.value + bonus + p.tourist;
+      return { value: slot, cls: 'wide order-btn', disabled: !canPay(p, o), html: `<span class="ob-l"><span>${o.name}</span><span class="o-need">${needHTML(o.need)}</span></span><span class="ob-r">${icon('coin')}+${val}</span>` };
+    });
+    buttons.push({ value: -1, label: 'ออกจากท่า', cls: 'ghost' });
+    const slot = await ask({
+      title: bonus ? 'ท่าใหญ่ · โบนัส +1 ต่อใบ' : 'ท่าส่งของ',
+      text: 'เลือกออเดอร์ที่จะส่ง ส่งได้หลายใบถ้าของพอ',
+      buttons,
+    });
+    if (slot < 0) return;
+    const o = ORDERS[S.orders[slot]];
+    Object.keys(o.need).forEach(k => { p.goods[k] -= o.need[k]; });
+    const val = o.value + bonus + p.tourist;
+    p.coins += val;
+    p.tourist = 0;
+    log(`${p.name} ส่งออเดอร์ "${o.name}" ได้ ${val} เหรียญ`);
+    S.orderDone.push(S.orders[slot]);
+    S.orders[slot] = drawOrder();
+    renderAll();
+  }
+}
+
+async function temple(p) {
+  if (total(p) === 0) { log(`${p.name} แวะไหว้พระ แต่ไม่มีของทำบุญ`); return; }
+  const k = await pickGood({ title: 'วัด · ทำบุญ', text: 'ถวายสินค้า 1 ชิ้น รับ 1 เหรียญ', from: p.goods, cancel: 'ไม่ทำบุญ' });
+  if (!k) return;
+  p.goods[k]--; p.coins++;
+  log(`${p.name} ทำบุญด้วย${GOODS[k]} ได้ 1 เหรียญ`);
+  renderAll();
+}
+
+async function barter(p) {
+  let done = 0;
+  while (done < 2 && total(p) > 0) {
+    const give = await pickGood({ title: `ตลาดแลก (${done + 1}/2)`, text: 'เลือกสินค้าของคุณที่จะนำไปแลก', from: p.goods, cancel: done ? 'พอแล้ว' : 'ไม่แลก' });
+    if (!give) break;
+    const get = await pickGood({ title: `ตลาดแลก (${done + 1}/2)`, text: `แลก${GOODS[give]} 1 ชิ้นกับอะไรดี`, exclude: give, cancel: 'เปลี่ยนใจ' });
+    if (!get) continue;
+    p.goods[give]--; p.goods[get]++; done++;
+    log(`${p.name} แลก${GOODS[give]}เป็น${GOODS[get]}`);
+    renderAll();
+  }
+}
+
+async function fortune(p) {
+  const f = drawFortune();
+  await ask({
+    title: 'เสี่ยงเซียมซี',
+    extra: `<div class="slip"><div class="slip-no">ใบที่ ${f.no}</div><div class="slip-title">${f.title}</div><p>${f.text}</p></div>`,
+    buttons: [{ value: 1, label: 'รับคำทำนาย', primary: true }],
+  });
+  log(`${p.name} ได้เซียมซี "${f.title}"`);
+  switch (f.id) {
+    case 'wind': {
+      const rolls = await rollDice(1, 'ลมส่งท้ายเรือ!');
+      await moveBy(p, rolls, `ลมส่ง! ได้ ${rolls[0]} แต้ม`);
+      return;
+    }
+    case 'regular': {
+      const k = await pickGood({ title: 'ลูกค้าขาประจำ', text: 'เลือกรับสินค้า 1 ชิ้น' });
+      p.goods[k]++; log(`${p.name} ได้${GOODS[k]} 1 ชิ้น`);
+      break;
+    }
+    case 'mangoes': {
+      const got = S.players.filter(o => total(o) < CAP);
+      got.forEach(o => { o.goods.mango++; });
+      log(got.length ? `${got.map(o => o.name).join(', ')} ได้มะม่วงคนละ 1 ชิ้น` : 'เรือทุกลำเต็ม ไม่มีใครรับมะม่วงได้');
+      break;
+    }
+    case 'krathong': p.goods.lotus += 2; log(`${p.name} ได้ดอกบัว 2 ชิ้น`); break;
+    case 'storm': {
+      let hit = 0;
+      S.players.forEach(o => { if (total(o) > 3) { const k = loseRandom(o); hit++; log(`${o.name} เสีย${GOODS[k]}ไปกับพายุ`); } });
+      if (!hit) log('พายุผ่านไป ไม่มีเรือลำไหนเสียของ');
+      break;
+    }
+    case 'leak': {
+      const k = loseRandom(p);
+      log(k ? `${p.name} เรือรั่ว เสีย${GOODS[k]} 1 ชิ้น` : `${p.name} เรือรั่ว แต่เรือว่างอยู่แล้ว`);
+      break;
+    }
+    case 'shortcut': {
+      const docks = SPACES.map((_, i) => i).filter(i => SPACES[i].type === 'dock' || SPACES[i].type === 'grand');
+      const to = await ask({
+        title: 'คลองลัด',
+        text: 'เลือกท่าที่จะไป แตะบนกระดานหรือเลือกด้านล่าง',
+        buttons: docks.map(i => ({ value: i, label: spaceName(i), sub: sideName(i) })),
+        cells: docks.map(i => [i, i]),
+      });
+      p.pos = to;
+      log(`${p.name} ลัดคลองไป${spaceName(to)}${sideName(to)}`);
+      renderAll();
+      await land(p);
+      return;
+    }
+    case 'middleman': {
+      const others = S.players.filter(o => o !== p && total(o) > 0);
+      if (!total(p) || !others.length) { log('ไม่มีของให้แลก พ่อค้าคนกลางกลับไปมือเปล่า'); break; }
+      const give = await pickGood({ title: 'พ่อค้าคนกลาง', text: 'เลือกสินค้าของคุณ 1 ชิ้นที่จะให้ไป', from: p.goods, cancel: 'ไม่แลก' });
+      if (!give) break;
+      const v = others.length === 1 ? others[0] : await pickPlayer({ title: 'พ่อค้าคนกลาง', text: 'จะแลกกับเรือของใคร', list: others });
+      const get = await pickGood({ title: `แลกกับ ${v.name}`, text: `เลือกสินค้าที่จะเอามาจากเรือของ ${esc(v.name)}`, from: v.goods });
+      p.goods[give]--; v.goods[give]++;
+      v.goods[get]--; p.goods[get]++;
+      log(`${p.name} เอา${GOODS[give]}ไปแลก${GOODS[get]}ของ ${v.name}`);
+      break;
+    }
+    case 'toll': {
+      const others = S.players.filter(o => o !== p);
+      const maxC = Math.max(...others.map(o => o.coins));
+      if (p.coins > maxC) { log(`${p.name} นำอยู่แล้ว ไม่มีใครต้องจ่ายค่าท่า`); break; }
+      const cands = others.filter(o => o.coins === maxC && total(o) > 0);
+      if (!cands.length) { log('คนที่นำอยู่ไม่มีของให้เก็บค่าท่า'); break; }
+      const v = cands.length === 1 ? cands[0] : await pickPlayer({ title: 'เก็บค่าท่า', text: 'มีหลายคนเหรียญเท่ากัน เลือกว่าจะเก็บจากใคร', list: cands });
+      const k = loseRandom(v);
+      p.goods[k]++;
+      log(`${v.name} จ่ายค่าท่าเป็น${GOODS[k]} 1 ชิ้นให้ ${p.name}`);
+      break;
+    }
+    case 'tourists': p.tourist += 2; log(`ออเดอร์ถัดไปของ ${p.name} ได้เพิ่ม 2 เหรียญ`); break;
+    case 'lottery': p.coins += 2; log(`${p.name} ถูกหวย ได้ 2 เหรียญ`); break;
+    case 'fickle': {
+      const slot = await ask({
+        title: 'ลูกค้าเปลี่ยนใจ',
+        text: 'เลือกออเดอร์ 1 ใบที่จะทิ้ง แล้วเปิดใบใหม่แทน',
+        buttons: S.orders.map((oi, s) => ({ value: s, cls: 'wide order-btn', html: `<span class="ob-l"><span>${ORDERS[oi].name}</span><span class="o-need">${needHTML(ORDERS[oi].need)}</span></span><span class="ob-r">${icon('coin')}${ORDERS[oi].value}</span>` }))
+          .concat([{ value: -1, label: 'ไม่เปลี่ยน', cls: 'ghost' }]),
+      });
+      if (slot >= 0) {
+        const old = ORDERS[S.orders[slot]];
+        S.orderDone.push(S.orders[slot]);
+        S.orders[slot] = drawOrder();
+        log(`ออเดอร์ "${old.name}" ถูกยกเลิก มี "${ORDERS[S.orders[slot]].name}" มาแทน`);
+      }
+      break;
+    }
+  }
+  renderAll();
+}
+
+async function enforceCap(p) {
+  while (total(p) > CAP) {
+    const k = await pickGood({ title: 'เรือเต็ม!', text: `เรือบรรทุกได้ ${CAP} ชิ้น ต้องทิ้งอีก ${total(p) - CAP} ชิ้น`, from: p.goods });
+    p.goods[k]--;
+    log(`${p.name} ทิ้ง${GOODS[k]} 1 ชิ้นเพราะเรือเต็ม`);
+    renderAll();
+  }
+}
+
+async function finishTurn() {
+  const p = cur();
+  if (!S.lastRound) {
+    const hit = S.players.filter(x => x.coins >= S.target);
+    if (hit.length) {
+      S.lastRound = true;
+      log(`${hit.map(x => x.name).join(', ')} มีเหรียญถึง ${S.target} แล้ว! เล่นต่อให้ครบรอบนี้แล้วปิดตลาด`);
+    }
+  }
+  renderAll();
+  const n = S.players.length;
+  const gameEnds = S.lastRound && S.current === n - 1;
+  const next = S.players[(S.current + 1) % n];
+  await ask({
+    title: `จบตาของ ${p.name}`,
+    extra: `<ul class="notes">${turnNotes.map(t => `<li>${esc(t)}</li>`).join('') || '<li>ตานี้ไม่มีอะไรเกิดขึ้น</li>'}</ul>`,
+    buttons: [gameEnds
+      ? { value: 1, label: 'ปิดตลาด ดูผลการค้า', primary: true }
+      : { value: 1, primary: true, html: `<span class="row">ส่งมือถือให้ ${boatSVG(next.color, 'boat-sm')} ${esc(next.name)}</span>` }],
+  });
+  if (gameEnds) { endGame(); return; }
+  S.current = (S.current + 1) % n;
+  if (S.current === 0) S.round++;
+  takeTurn();
+}
+
+async function endGame() {
+  S.over = true;
+  snap = null;
+  clearSave();
+  const ranked = [...S.players].sort((a, b) => b.coins - a.coins || total(b) - total(a));
+  const rankOf = p => 1 + ranked.findIndex(q => q.coins === p.coins && total(q) === total(p));
+  renderAll();
+  const choice = await ask({
+    title: 'ปิดตลาด! ผลการค้าวันนี้',
+    extra: `<ol class="results">${ranked.map(p => { const r = rankOf(p); return `<li class="${r === 1 ? 'win' : ''}"><span class="rk">${r}</span>${boatSVG(p.color, 'boat-md')}<span class="nm">${esc(p.name)}<small>${r === 1 ? 'เจ้าสัวตลาดน้ำ' : `เหลือสินค้า ${total(p)} ชิ้น`}</small></span><span class="cn">${icon('coin')}${p.coins}</span></li>`; }).join('')}</ol>`,
+    buttons: [
+      { value: 'again', label: 'เล่นอีกตา (ชื่อเดิม)', primary: true },
+      { value: 'setup', label: 'ตั้งค่าใหม่' },
+    ],
+  });
+  if (choice === 'again') startGame(S.players.map(p => p.name), S.target);
+  else showSetup();
+}
+
+/* ================= Screens ================= */
+let wakeLock = null;
+async function requestWake() {
+  try {
+    if ('wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S && !S.over && !$('#game').hidden) requestWake();
+});
+
+function enterGame() {
+  $('#setup').hidden = true;
+  $('#game').hidden = false;
+  $('#cellInfo').textContent = 'แตะช่องบนกระดานเพื่อดูว่าช่องนั้นทำอะไร';
+  window.scrollTo(0, 0);
+  requestWake();
+  renderAll();
+}
+function startGame(names, target) {
+  FLOW.gen++;
+  pendingResolve = null;
+  S = newGame(names, target);
+  enterGame();
+  takeTurn();
+}
+function resumeGame(saved) {
+  FLOW.gen++;
+  pendingResolve = null;
+  S = saved;
+  enterGame();
+  takeTurn();
+}
+function showSetup() {
+  FLOW.gen++;
+  pendingResolve = null;
+  uiTargets = new Map();
+  $('#game').hidden = true;
+  $('#setup').hidden = false;
+  const s = loadSave();
+  $('#resume').hidden = !s;
+  if (s) $('#resumeInfo').textContent = `รอบที่ ${s.round} · ตาของ ${s.players[s.current].name} · ${s.players.length} คน · เป้า ${s.target} เหรียญ`;
+  window.scrollTo(0, 0);
+}
+
+let setupCount = 4;
+let setupTarget = 12;
+let prefNames = [];
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(KEY_PREFS) || 'null');
+    if (p) {
+      if ([3, 4, 5, 6].includes(p.count)) setupCount = p.count;
+      if ([8, 12, 16].includes(p.target)) setupTarget = p.target;
+      if (Array.isArray(p.names)) prefNames = p.names.map(n => String(n).slice(0, 12));
+    }
+  } catch (e) { /* ignore */ }
+}
+function savePrefs() {
+  try { localStorage.setItem(KEY_PREFS, JSON.stringify({ count: setupCount, target: setupTarget, names: prefNames })); } catch (e) { /* ignore */ }
+}
+function segInit(el, items, current, onChange) {
+  el.innerHTML = items.map(([v, label]) => `<button type="button" role="radio" aria-checked="${v === current}" data-v="${v}">${label}</button>`).join('');
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    el.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+    onChange(+b.dataset.v);
+  });
+}
+function renderNames() {
+  $('#names').innerHTML = Array.from({ length: setupCount }, (_, i) =>
+    `<label class="namerow" for="name-${i}">${boatSVG(COLORS[i], 'boat-md')}<span class="sr">ชื่อผู้เล่นคนที่ ${i + 1}</span><input id="name-${i}" maxlength="12" autocomplete="off" enterkeyhint="next" value="${esc(prefNames[i] || '')}" placeholder="ผู้เล่น ${i + 1}"></label>`).join('');
+}
+function initSetup() {
+  loadPrefs();
+  segInit($('#countSeg'), [[3, '3'], [4, '4'], [5, '5'], [6, '6']], setupCount, v => { setupCount = v; renderNames(); });
+  segInit($('#targetSeg'), [[8, '8<small>สั้น ~10 นาที</small>'], [12, '12<small>ปกติ ~15–20 นาที</small>'], [16, '16<small>ยาว ~25 นาที</small>']], setupTarget, v => { setupTarget = v; });
+  renderNames();
+  $('#names').addEventListener('input', e => {
+    const m = /^name-(\d)$/.exec(e.target.id || '');
+    if (m) prefNames[+m[1]] = e.target.value;
+  });
+  $('#startBtn').addEventListener('click', () => {
+    const names = Array.from({ length: setupCount }, (_, i) => ($('#name-' + i).value.trim() || `ผู้เล่น ${i + 1}`).slice(0, 12));
+    savePrefs();
+    startGame(names, setupTarget);
+  });
+  $('#resumeBtn').addEventListener('click', () => { const s = loadSave(); if (s) resumeGame(s); else showSetup(); });
+}
+
+function openSheet(id) {
+  const el = $(id);
+  el.hidden = false;
+  const first = el.querySelector('button');
+  if (first) first.focus({ preventScroll: true });
+}
+function closeSheets() { document.querySelectorAll('.overlay').forEach(o => { o.hidden = true; }); }
+function bindChrome() {
+  $('#rulesBtn').addEventListener('click', () => openSheet('#rules'));
+  $('#rulesBtn2').addEventListener('click', () => openSheet('#rules'));
+  $('#exitBtn').addEventListener('click', () => openSheet('#confirm'));
+  $('#confirmExit').addEventListener('click', () => { closeSheets(); showSetup(); });
+  document.querySelectorAll('.overlay').forEach(o => {
+    o.addEventListener('click', e => { if (e.target === o || e.target.closest('[data-close]')) closeSheets(); });
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheets(); });
+}
+
+function boot(data) {
+  initBoard();
+  initSetup();
+  bindChrome();
+  const g = data && data.game;
+  if (g && g.v === 1 && !g.over) resumeGame(g);
+  else showSetup();
+}
+if (window.claude?.hot?.ready) window.claude.hot.ready(boot);
+else boot(window.claude?.hot?.data ?? {});
+</script>
+</body>
+</html>
